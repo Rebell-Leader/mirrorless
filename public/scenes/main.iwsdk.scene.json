@@ -1,0 +1,156 @@
+{
+  "version": "iwsdk.scene.v1",
+  "units": "meters",
+  "components": {
+    "com.iwsdk.components.IBLGradient": {
+      "sky": [
+        0.96,
+        0.94,
+        0.9,
+        1
+      ],
+      "equator": [
+        0.8,
+        0.76,
+        0.7,
+        1
+      ],
+      "ground": [
+        0.46,
+        0.42,
+        0.38,
+        1
+      ],
+      "intensity": 0.25
+    }
+  },
+  "environment": {
+    "toneMapping": "aces",
+    "exposure": 1,
+    "shadows": true,
+    "shadowMapType": "pcf"
+  },
+  "resources": {},
+  "nodes": [
+    {
+      "id": "trainer-panel",
+      "name": "Trainer Panel",
+      "content": {
+        "type": "asset",
+        "asset": "trainer-panel"
+      },
+      "transform": {
+        "position": [
+          0,
+          1.42,
+          -0.68
+        ],
+        "scale": 0.068
+      },
+      "components": {
+        "RayInteractable": {},
+        "PokeInteractable": {}
+      }
+    },
+    {
+      "id": "recorder-panel",
+      "name": "Recorder Panel",
+      "content": {
+        "type": "asset",
+        "asset": "recorder-panel"
+      },
+      "transform": {
+        "position": [
+          0,
+          1.45,
+          -1.0
+        ],
+        "scale": 0.085
+      },
+      "components": {
+        "RayInteractable": {},
+        "PokeInteractable": {}
+      }
+    },
+    {
+      "id": "probe-panel",
+      "name": "Probe Panel",
+      "content": {
+        "type": "asset",
+        "asset": "probe-panel"
+      },
+      "transform": {
+        "position": [
+          -1.02,
+          1.55,
+          -0.72
+        ],
+        "rotationDeg": [
+          0,
+          55,
+          0
+        ],
+        "scale": 0.09
+      },
+      "components": {
+        "RayInteractable": {}
+      }
+    },
+    {
+      "id": "key-light",
+      "name": "Key Light",
+      "transform": {
+        "position": [
+          -2.3541,
+          11.2763,
+          1.762
+        ],
+        "rotationDeg": [
+          -73.3982,
+          -11.3134,
+          0
+        ]
+      },
+      "components": {
+        "DirectionalLight": {
+          "color": [
+            1,
+            0.945,
+            0.87,
+            1
+          ],
+          "intensity": 2,
+          "castShadow": true,
+          "shadowMapSize": "1024",
+          "shadowCameraSize": 6,
+          "shadowCameraNear": 2,
+          "shadowCameraFar": 24,
+          "shadowRadius": 5,
+          "shadowBias": -0.0004,
+          "shadowNormalBias": 0.02
+        }
+      }
+    },
+    {
+      "id": "fill-light",
+      "name": "Fill Light",
+      "components": {
+        "HemisphereLight": {
+          "skyColor": [
+            0.96,
+            0.94,
+            0.9,
+            1
+          ],
+          "groundColor": [
+            0.55,
+            0.52,
+            0.48,
+            1
+          ],
+          "intensity": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+<!--
+  Development probe: live hand-tracking features and detected room labels.
+  Text fields are updated at runtime by ProbeSystem via setProperties({ text }).
+-->
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .panel-content {
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 20px;
+    padding-bottom: 12px;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .eyebrow {
+    color: #0b6b5a;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+  }
+
+  .eyebrow:dark {
+    color: #3ee6c1;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .label {
+    color: #55575d;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-top: 8px;
+  }
+
+  .label:dark {
+    color: #9da1a8;
+  }
+
+  .value {
+    color: #1c1d20;
+    font-size: 19px;
+  }
+
+  .value:dark {
+    color: #e8eaed;
+  }
+
+  .button {
+    justify-content: flex-start;
+    margin-left: 22px;
+    margin-right: 22px;
+    margin-bottom: 20px;
+  }
+
+  .button-label {
+    transform-translate-y: 1px;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="panel-content">
+    <div class="eyebrow">MIRRORLESS - DEV PROBE</div>
+    <div class="heading">Hand tracking check</div>
+    <div class="label">SESSION</div>
+    <div id="session-status" class="value">Not in XR yet</div>
+    <div class="label">LEFT HAND</div>
+    <div id="left-status" class="value">not tracked</div>
+    <div id="left-detail" class="value">-</div>
+    <div class="label">RIGHT HAND</div>
+    <div id="right-status" class="value">not tracked</div>
+    <div id="right-detail" class="value">-</div>
+    <div class="label">ROOM</div>
+    <div id="room-status" class="value">no planes or meshes yet</div>
+  </div>
+  <Button id="xr-button" class="button">
+    <ButtonIcon>
+      <RectangleGoggles></RectangleGoggles>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Enter XR</ButtonLabel>
+  </Button>
+  <Button id="exit-button" class="button" style="display: none">
+    <ButtonIcon>
+      <LogIn></LogIn>
+    </ButtonIcon>
+    <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
+  </Button>
+</Panel>
