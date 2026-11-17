@@ -13,10 +13,14 @@ import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import type { Plugin } from 'vite';
-import { validateTake, type RecordingTake } from '../src/recording-schema.js';
+import {
+  TAKE_FILE_RE,
+  takeFileName,
+  validateTake,
+  type RecordingTake,
+} from '../src/recording-schema.js';
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
-const FILE_RE = /^[A-Za-z0-9-]{1,48}\/[A-Z]{1,16}-(left|right)-t\d{1,3}-\d{10,16}\.json$/u;
 
 function send(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
@@ -101,7 +105,7 @@ export function recordingsPlugin(options: { dir?: string } = {}): Plugin {
               send(res, 400, { ok: false, error });
               return;
             }
-            const file = `${take.sessionId}/${take.label}-${take.hand}-t${take.take}-${Date.now()}.json`;
+            const file = takeFileName(take, Date.now());
             const target = path.join(root, file);
             if (!target.startsWith(root + path.sep)) {
               send(res, 400, { ok: false, error: 'bad path' });
@@ -115,7 +119,7 @@ export function recordingsPlugin(options: { dir?: string } = {}): Plugin {
 
           if (req.method === 'DELETE') {
             const file = url.searchParams.get('file') ?? '';
-            if (!FILE_RE.test(file)) {
+            if (!TAKE_FILE_RE.test(file)) {
               send(res, 400, { ok: false, error: 'bad file' });
               return;
             }

@@ -4,8 +4,11 @@
  * Walks through the ASL letters. For each take it waits until the chosen hand
  * holds a steady shape, captures the last ~0.5 s of joint poses (motion
  * letters J/Z: a 1.6 s trajectory), and POSTs the take to the dev server,
- * which saves it under data/recordings/. Between takes the learner must relax
- * the hand, so takes are independent rather than duplicates.
+ * which saves it under data/recordings/. When the dev server can't be reached
+ * (hosted site, or a Wi-Fi that blocks device-to-device traffic) takes are kept
+ * in this browser instead (take-store.ts) and downloaded later from the 2D
+ * page. Between takes the learner must relax the hand, so takes are
+ * independent rather than duplicates.
  *
  * Hands-only: capture is automatic; buttons are pressed with the other hand.
  * Word mode records whole words fingerspelled continuously (transitions,
@@ -32,11 +35,21 @@ import {
   type RecordedFrame,
   type RecordingTake,
   type TakeKind,
+  takeFileName,
+  validateTake,
   WORD_RE,
 } from './recording-schema.js';
+import { countTakes, deleteTake, putTake, requestPersistentStorage } from './take-store.js';
 import { isRecorderUrl } from './trainer.js';
 
 type Phase = 'waiting' | 'holding' | 'recording' | 'saving' | 'release' | 'paused' | 'done';
+/** Where takes go: the laptop's dev server, or this browser's IndexedDB. */
+type Storage = 'laptop' | 'headset';
+
+interface SavedTake {
+  file: string;
+  where: Storage;
+}
 
 const RING = 1200; // ~13 s at 90 fps (long words)
 const SHAPE_DIMS = 20; // 5 curls + 15 fingertip coordinates
@@ -157,12 +170,14 @@ export class RecorderSystem extends createSystem({}) {
   private takeShapes = new Map<string, Float32Array[]>();
   private lastShapeLabel: string[] = [];
 
-  private savedFiles: string[] = [];
+  private savedFiles: SavedTake[] = [];
   private savedCount = 0;
   private failedCount = 0;
   private lastError = '';
-  private connected: boolean | null = null;
-  private laptopTotal = 0;
+  private storage: Storage | null = null;
+  private storageReady: Promise<void> = Promise.resolve();
+  /** Takes in the current storage (laptop disk or this headset), all sessions. */
+  private storedTotal = 0;
 
   private text: Record<string, TextElement | undefined> = {};
   private uiTimer = 0;
@@ -241,12 +256,15 @@ export class RecorderSystem extends createSystem({}) {
         steady: this.steadyS,
         saved: this.savedCount,
         failed: this.failedCount,
-        files: [...this.savedFiles],
+        lastError: this.lastError,
+        files: this.savedFiles.map((f) => f.file),
+        storage: this.storage,
+        storedTotal: this.storedTotal,
         sessionId: this.sessionId,
       }),
     };
 
-    void this.checkConnection();
+    this.storageReady = this.detectStorage();
     this.renderAll();
   }
 
@@ -389,19 +407,24 @@ export class RecorderSystem extends createSystem({}) {
 
   private async redo(): Promise<void> {
     if (this.phase === 'saving') return;
-    const file = this.savedFiles.pop();
-    if (!file) return;
+    const saved = this.savedFiles.pop();
+    if (!saved) return;
+    const { file } = saved;
     const m = /\/([A-Z]{1,16})-(left|right)-t(\d+)-/u.exec(file);
     try {
-      const res = await fetch(`/api/recordings?file=${encodeURIComponent(file)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (saved.where === 'laptop') {
+        const res = await fetch(`/api/recordings?file=${encodeURIComponent(file)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } else {
+        await deleteTake(file);
+      }
       this.savedCount = Math.max(0, this.savedCount - 1);
-      this.laptopTotal = Math.max(0, this.laptopTotal - 1);
+      if (saved.where === this.storage) this.storedTotal = Math.max(0, this.storedTotal - 1);
       const lbl = this.lastShapeLabel.pop();
       if (lbl) this.takeShapes.get(lbl)?.pop();
     } catch (err) {
       this.lastError = `Redo failed: ${err instanceof Error ? err.message : String(err)}`;
-      this.savedFiles.push(file);
+      this.savedFiles.push(saved);
       this.renderAll();
       return;
     }
@@ -509,21 +532,15 @@ export class RecorderSystem extends createSystem({}) {
     this.beep(880, 0.08);
     try {
       if (frames.length < 5) throw new Error(`only ${frames.length} frames captured`);
-      const res = await fetch('/api/recordings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(take),
-      });
-      const body = (await res.json()) as { ok: boolean; file?: string; error?: string };
-      if (!res.ok || !body.ok || !body.file) throw new Error(body.error ?? `HTTP ${res.status}`);
-      this.savedFiles.push(body.file);
+      await this.storageReady;
+      const saved = await this.saveTake(take);
+      this.savedFiles.push(saved);
       const shapes = this.takeShapes.get(letter.label) ?? [];
       shapes.push(Float32Array.from(this.capturedShape));
       this.takeShapes.set(letter.label, shapes);
       this.lastShapeLabel.push(letter.label);
       this.savedCount++;
-      this.laptopTotal++;
-      this.connected = true;
+      this.storedTotal++;
       this.lastError = '';
       this.beep(1320, 0.12, 0.09);
       this.advanceTake();
@@ -538,17 +555,57 @@ export class RecorderSystem extends createSystem({}) {
     this.renderAll();
   }
 
-  private async checkConnection(): Promise<void> {
+  /** Saves one take where it can, falling back to the headset if the laptop disappears. */
+  private async saveTake(take: RecordingTake): Promise<SavedTake> {
+    if (this.storage === 'laptop') {
+      let res: Response;
+      try {
+        res = await fetch('/api/recordings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(take),
+        });
+      } catch {
+        // Network failure (Wi-Fi drop, server stopped): keep the take in the headset.
+        await this.useHeadsetStorage();
+        return this.saveTake(take);
+      }
+      const body = (await res.json()) as { ok: boolean; file?: string; error?: string };
+      if (!res.ok || !body.ok || !body.file) throw new Error(body.error ?? `HTTP ${res.status}`);
+      return { file: body.file, where: 'laptop' };
+    }
+    // Same validation and file naming the dev server uses, so the import is lossless.
+    const error = validateTake(take);
+    if (error) throw new Error(error);
+    const file = takeFileName(take, Date.now());
+    await putTake(file, take);
+    return { file, where: 'headset' };
+  }
+
+  /** The laptop's recordings API if it answers, otherwise this browser's storage. */
+  private async detectStorage(): Promise<void> {
     try {
       const res = await fetch('/api/recordings/summary');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as { total: number };
-      this.connected = true;
-      this.laptopTotal = body.total;
+      const body = (await res.json()) as { total?: unknown };
+      if (typeof body.total !== 'number') throw new Error('not the recordings API');
+      this.storage = 'laptop';
+      this.storedTotal = body.total;
     } catch {
-      this.connected = false;
+      await this.useHeadsetStorage();
     }
     this.renderAll();
+  }
+
+  private async useHeadsetStorage(): Promise<void> {
+    this.storage = 'headset';
+    void requestPersistentStorage();
+    try {
+      this.storedTotal = await countTakes();
+    } catch (err) {
+      this.storedTotal = 0;
+      this.lastError = `Headset storage unavailable: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 
   // ---------------------------------------------------------------- output
@@ -604,7 +661,12 @@ export class RecorderSystem extends createSystem({}) {
     } else {
       this.setText('letter', { text: 'OK', fontSize: 120 });
       this.setText('shape', { text: 'All letters recorded for this session. Thank you!' });
-      this.setText('meta', { text: 'Reload the page to start another session.' });
+      this.setText('meta', {
+        text:
+          this.storage === 'headset'
+            ? 'Takes are stored in this headset. Exit XR and press "Download takes" on the page.'
+            : 'Reload the page to start another session.',
+      });
       this.setText('take', { text: `${this.savedCount} takes saved this session` });
     }
 
@@ -653,11 +715,11 @@ export class RecorderSystem extends createSystem({}) {
     });
     this.setText('connection', {
       text:
-        this.connected === null
+        this.storage === null
           ? 'Checking connection to the laptop...'
-          : this.connected
-            ? `Connected to laptop | ${this.laptopTotal} takes on disk | session ${this.sessionId}`
-            : 'NOT connected to the dev server - takes will not be saved',
+          : this.storage === 'laptop'
+            ? `Connected to laptop | ${this.storedTotal} takes on disk | session ${this.sessionId}`
+            : `Saving in this headset | ${this.storedTotal} takes stored | exit XR to download them`,
     });
   }
 

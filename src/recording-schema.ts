@@ -64,3 +64,63 @@ export function validateTake(value: unknown): string | null {
   }
   return null;
 }
+
+/** Path of one take under data/recordings: `<session>/<LABEL>-<hand>-t<take>-<ms>.json`. */
+export const TAKE_FILE_RE = /^[A-Za-z0-9-]{1,48}\/[A-Z]{1,16}-(left|right)-t\d{1,3}-\d{10,16}\.json$/u;
+
+export function takeFileName(
+  take: Pick<RecordingTake, 'sessionId' | 'label' | 'hand' | 'take'>,
+  nowMs: number,
+): string {
+  return `${take.sessionId}/${take.label}-${take.hand}-t${take.take}-${Math.round(nowMs)}.json`;
+}
+
+/**
+ * Takes saved in the headset's browser (hosted site, no laptop) are downloaded
+ * as one bundle file and imported on the laptop with `pnpm import:takes`.
+ */
+export const TAKE_BUNDLE_SCHEMA = 'mirrorless.take-bundle.v1';
+
+export interface StoredTake {
+  /** Same relative path the dev server would have written. */
+  file: string;
+  take: RecordingTake;
+}
+
+export interface TakeBundle {
+  schema: typeof TAKE_BUNDLE_SCHEMA;
+  exportedAt: string;
+  takes: StoredTake[];
+}
+
+/** Validates a downloaded bundle; bad entries are reported, never written. */
+export function parseTakeBundle(value: unknown): { takes: StoredTake[]; errors: string[] } {
+  const takes: StoredTake[] = [];
+  const errors: string[] = [];
+  const b = value as Partial<TakeBundle> | null;
+  if (typeof b !== 'object' || b === null || b.schema !== TAKE_BUNDLE_SCHEMA) {
+    return { takes, errors: ['not a Mirrorless take bundle'] };
+  }
+  if (!Array.isArray(b.takes)) return { takes, errors: ['bundle has no takes list'] };
+  b.takes.forEach((entry, i) => {
+    const file = (entry as Partial<StoredTake> | null)?.file;
+    const take = (entry as Partial<StoredTake> | null)?.take;
+    const where = typeof file === 'string' ? file : `entry ${i + 1}`;
+    if (typeof file !== 'string' || !TAKE_FILE_RE.test(file)) {
+      errors.push(`${where}: bad file name`);
+      return;
+    }
+    const error = validateTake(take);
+    if (error) {
+      errors.push(`${where}: ${error}`);
+      return;
+    }
+    const t = take as RecordingTake;
+    if (!file.startsWith(`${t.sessionId}/${t.label}-${t.hand}-t${t.take}-`)) {
+      errors.push(`${where}: file name does not match the take`);
+      return;
+    }
+    takes.push({ file, take: t });
+  });
+  return { takes, errors };
+}

@@ -10,6 +10,7 @@ import { HandTrackingSystem } from './hand-tracking.js';
 import { PanelSystem } from './panel.js';
 import { ProbeSystem } from './probe.js';
 import { RecorderSystem } from './recorder.js';
+import { mountRecorderOverlay } from './recorder-overlay.js';
 import { mountSetupOverlay } from './setup-overlay.js';
 import { TrainerSystem } from './trainer.js';
 
@@ -23,4 +24,5 @@ World.create(
   world.registerSystem(TrainerSystem);
   world.registerSystem(RecorderSystem);
   mountSetupOverlay(world);
+  mountRecorderOverlay(world);
 });

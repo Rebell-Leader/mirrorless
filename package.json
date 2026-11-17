@@ -14,7 +14,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --import tsx --test \"tests/**/*.test.ts\"",
-    "eval:recordings": "tsx scripts/eval-recordings.ts"
+    "eval:recordings": "tsx scripts/eval-recordings.ts",
+    "import:takes": "tsx scripts/import-takes.ts",
+    "deploy:vercel": "vite build && pnpm dlx vercel@latest deploy dist --prod --yes --project mirrorless --create-if-missing"
   },
   "dependencies": {
     "@iwsdk/core": "1.1.0",

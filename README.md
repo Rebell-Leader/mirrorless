@@ -16,7 +16,10 @@ pnpm dev            # starts Vite + the emulator window (IWSDK-managed)
 pnpm test           # hand-feature geometry tests (node:test + tsx)
 pnpm typecheck
 ./node_modules/.bin/iwsdk dev down   # stop the dev server
+pnpm deploy:vercel  # build and publish dist/ to https://mirrorless-two.vercel.app
 ```
+
+The hosted build is live at **https://mirrorless-two.vercel.app** (Vercel project `mirrorless`). Open it in the Quest browser and press **Enter XR**. No dev server is needed.
 
 `pnpm-workspace.yaml` sets `nodeLinker: hoisted`. The IWSDK editor runtime
 imports transitive packages that pnpm's strict layout would hide.
@@ -29,7 +32,7 @@ Accept the self-signed certificate warning, then press **Enter XR**.
 
 ## Recording hands
 
-See [docs/RECORDING.md](docs/RECORDING.md). In short: open the LAN URL on the Quest, press Enter XR, hold each letter still until it saves, and relax between takes. Then run `pnpm eval:recordings`. Recordings go to `data/recordings/` (git-ignored).
+See [docs/RECORDING.md](docs/RECORDING.md). In short: open the LAN URL with `?recorder=1` on the Quest, press Enter XR, hold each letter still until it saves, and relax between takes. Then run `pnpm eval:recordings`. Recordings go to `data/recordings/` (git-ignored). If the headset can't reach the laptop, record on `https://mirrorless-two.vercel.app/?recorder=1` instead. Takes are kept in the headset, downloaded as one file from the page, and imported with `pnpm import:takes <file>`.
 
 ## Research and plan
 

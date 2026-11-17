@@ -49,3 +49,6 @@ data/recordings/
 data/emulator-test/
 data/models/
 artifacts/
+
+# Vercel CLI project link
+.vercel/

@@ -13,15 +13,17 @@ The recorder captures **hand-joint poses only** (25 joints per hand, plus the he
    cd /home/obi/meta-vr-hackathon && ./node_modules/.bin/iwsdk dev status | grep -A3 network
    ```
    Last time it was `https://192.168.2.184:8081/`. The Quest must be on the same Wi-Fi.
+   **Add `?recorder=1` to open the recorder**, e.g. `https://192.168.2.184:8081/?recorder=1`. The plain URL opens the learner trainer, which records nothing. `?letters=…` or `?words=…` also open the recorder.
+   **Headset can't reach the laptop?** Use the hosted recorder instead: `https://mirrorless-two.vercel.app/?recorder=1`. Takes are then kept in the headset and imported afterwards (section 6).
 3. **Don't edit project files while recording.** Any code change hot-reloads the page and ends the XR session.
 4. Sit in good, even light. Take off rings and bracelets if you can, and wipe the headset's tracking cameras.
 
 ## 2. Start
 
-1. In the Quest Browser, open the URL and accept the certificate warning ("Advanced" → proceed). The certificate is the local dev one.
+1. In the Quest Browser, open the recorder URL (with `?recorder=1`) and accept the certificate warning ("Advanced" → proceed). The certificate is the local dev one.
 2. Press **Enter XR** on the panel, then allow hand tracking and spatial data if asked.
 3. The recorder panel appears about 1 m in front of you, slightly below eye level. If it's in an awkward place, press **Recenter**.
-4. Check the bottom line of the panel. It should say **"Connected to laptop"**. If it says "NOT connected", see Troubleshooting.
+4. Check the bottom line of the panel. **"Connected to laptop"** means takes go straight to the laptop. **"Saving in this headset"** means they're kept in the headset's browser until you download them (section 6).
 
 ## 3. How a take works
 
@@ -37,7 +39,7 @@ Press buttons with your **other hand**, either by touching them with your index 
 
 | Button | What it does |
 |---|---|
-| Redo last | Deletes the last saved take from the laptop and records it again |
+| Redo last | Deletes the last saved take (on the laptop or in the headset) and records it again |
 | Skip letter | Moves on; use it for letters you can't form |
 | Pause | Pauses and resumes |
 | Hand: right/left | Switches the recording hand and restarts the takes for the current letter |
@@ -51,7 +53,7 @@ The evaluation needs **at least two separate sessions** to give an honest number
 
 | Session | URL | Takes | Time | Why |
 |---|---|---|---|---|
-| 1. Letters, now | `https://<ip>:8081/` | A–Z × 3 = 78 | ~15 min | Templates |
+| 1. Letters, now | `https://<ip>:8081/?recorder=1` | A–Z × 3 = 78 | ~15 min | Templates |
 | 2. Letters again, later (take the headset off in between and sit a bit differently) | same URL | A–Z × 3 | ~15 min | Held-out test session |
 | 3. Words | `https://<ip>:8081/?words=HELLO,BOOK,ANNA,COFFEE,PIZZA,MAYA` plus your own name | 6–7 words × 3 | ~8 min | Transitions, double letters (BOOK, ANNA, COFFEE, PIZZA), rhythm, and a future tutor-hand prototype |
 | 4. Optional: left hand | `...?hand=left&letters=LBYAVWIK` | 8 × 3 | ~5 min | Shows left-hand support works |
@@ -74,17 +76,37 @@ It prints:
 - per-letter accuracy;
 - the top confusions, for example M→N.
 
-It writes `data/models/templates-right.json`, which the in-headset grader will load next. Letters that stay unreliable become **self-check letters** in the app, rather than being faked or dropped.
+It writes the model to `data/models/templates-right.json` and copies it to `public/models/templates-right.json`, which is the file the trainer loads. Reload the trainer page and it adds your recorded templates to its built-in ones, and uses the suggested confidence margin from the file.
+
+- Which letters are self-check is a fixed list in the code (M, N, T, S, E, R, A, plus the movement letters J and Z). The per-letter accuracy doesn't change it automatically. Use that accuracy to decide whether the list needs changing.
+- `public/models/` is **not** git-ignored, and the model's templates are built from your takes. Decide whether to commit it before running `git add -A`.
+
+## 6. Recording on the hosted site (no laptop connection)
+
+Use this when the headset can't reach the laptop, for example on a Wi-Fi that blocks device-to-device traffic.
+
+1. Open `https://mirrorless-two.vercel.app/?recorder=1` on the Quest (same URL options as above) and press **Enter XR**. The panel's bottom line says **"Saving in this headset | N takes stored"**.
+2. Record as usual. Takes are kept in the Quest browser's storage, survive reloads, and are never uploaded anywhere.
+3. When you're done, exit XR. At the bottom of the page, press **Download takes**. The Quest saves one `mirrorless-takes-<date>-<time>.json` file to its Downloads folder.
+4. Copy that file to the laptop. With the USB-C cable, put the headset on and allow file access when asked. The laptop's file manager then shows *Quest 3 → Internal shared storage → Download*. Uploading the file to your own cloud drive from the Quest browser works too.
+5. On the laptop:
+   ```bash
+   cd /home/obi/meta-vr-hackathon && pnpm import:takes ~/Downloads/mirrorless-takes-*.json && pnpm eval:recordings
+   ```
+   The import writes the takes into `data/recordings/<session>/`, the same as a laptop session. It skips takes that are already there, so importing a file twice is safe.
+6. After the import succeeds, press **Delete stored takes** on the recorder page to free the headset's storage. Clearing the Quest browser's site data also deletes them, so download after every session.
+
+To make the hosted trainer use the new model, publish it with `pnpm deploy:vercel`. The model comes from `public/models/templates-right.json`, written by `pnpm eval:recordings`.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| "NOT connected to the dev server" | You opened a different URL, or the server stopped. Run `pnpm dev`, reload the page, and re-enter XR |
+| "Saving in this headset" when you meant to save to the laptop | The headset can't reach the dev server. The takes are still kept: import them (section 6), or run `pnpm dev`, reload the page and re-enter XR |
 | Red "Not saved: …" chip | The laptop rejected the take. Read the message. Redo works once the connection is back |
 | The bar never fills | Your hand is moving or tracking is jittery. Brace your elbow on the armrest or add `&stable=0.02` |
 | "Show your right hand" | Hand tracking lost. Check the lighting, keep the hand in front of you and away from your face |
-| A wrong take was saved | Press **Redo last** straight away. It deletes the file on the laptop |
+| A wrong take was saved | Press **Redo last** straight away. It deletes the take wherever it was saved |
 | The XR session ended by itself | A file in the project changed (hot reload). Re-enter XR. The session ID changes, which is fine |
 
 ## Notes on accuracy
