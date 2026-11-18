@@ -25,8 +25,8 @@ import {
   Vector3,
   VisibilityState,
 } from '@iwsdk/core';
-import { ASL_LETTERS, LETTER_INDEX } from './asl-letters.js';
-import { checkFingers, type GateResult } from './finger-gate.js';
+import { ASL_LETTERS, LETTER_INDEX, type PalmFacing } from './asl-letters.js';
+import { checkFingers, checkPalm, type GateResult } from './finger-gate.js';
 import { F, FEATURE_COUNT, type Handedness, JOINT_COUNT } from './hand-features.js';
 import { handState } from './hand-state.js';
 import type { TextElement } from './probe.js';
@@ -83,7 +83,16 @@ interface Item {
   durationMs: number;
   /** Finger pattern the steady (start) shape must roughly match. */
   fingers: string;
+  /** Palm direction the steady (start) shape must roughly match, if any. */
+  palm: PalmFacing | null;
 }
+
+const PALM_TEXT: Record<PalmFacing, string> = {
+  forward: 'Palm away from you (you see your knuckles)',
+  in: 'Palm toward you',
+  down: 'Palm down, fingers pointing down',
+  side: 'Palm to the side',
+};
 
 interface Config {
   items: Item[];
@@ -109,10 +118,11 @@ function readConfig(): Config {
     kind: 'letter',
     label: l.letter,
     shape: l.shape,
-    meta: `Palm ${l.palm}${l.motion ? ' | movement letter' : ''} | expected tracking difficulty: ${l.risk}`,
+    meta: `${PALM_TEXT[l.palm]}${l.motion ? ' | movement letter' : ''} | expected tracking difficulty: ${l.risk}`,
     motion: l.motion,
     durationMs: MOTION_MS,
     fingers: l.fingers,
+    palm: l.palm,
   }));
   for (const w of words) {
     items.push({
@@ -123,6 +133,7 @@ function readConfig(): Config {
       motion: true,
       durationMs: w.length * WORD_MS_PER_LETTER + WORD_EXTRA_MS,
       fingers: LETTER_INDEX[w[0]]?.fingers ?? '.....',
+      palm: LETTER_INDEX[w[0]]?.palm ?? null,
     });
   }
   const takes = Math.min(10, Math.max(1, Number.parseInt(p.get('takes') ?? '3', 10) || 3));
@@ -313,7 +324,11 @@ export class RecorderSystem extends createSystem({}) {
         if (this.steadyS === 0) this.gateMessage = '';
         const need = letter.motion ? MOTION_LEAD_S : HOLD_S;
         if (this.steadyS >= need) {
-          this.gate = checkFingers(letter.fingers, handState[this.cfg.hand].features);
+          const features = handState[this.cfg.hand].features;
+          this.gate = checkFingers(letter.fingers, features);
+          // Palm direction is part of the letter: a palm-toward-you "L" is not an ASL L.
+          const palmHint = letter.palm ? checkPalm(letter.palm, features) : null;
+          if (palmHint) this.gate = { pass: false, problems: [palmHint, ...this.gate.problems] };
           this.consistent = letter.kind === 'word' || this.isConsistent(letter.label);
           const ok = this.gate.pass && this.consistent;
           if (!ok && this.steadyS < OVERRIDE_S) {

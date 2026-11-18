@@ -42,7 +42,7 @@ export const STARTER_PRESETS: Record<string, { label: string; name: string; word
   caregiver: {
     label: 'Caregiver & Meds (Maya)',
     name: 'MAYA',
-    words: ['HANNAH', 'ADVIL', 'TYLENOL', 'WATER'],
+    words: ['HANNAH', 'INSULIN', 'IBUPROFEN', 'WATER'],
   },
   family: {
     label: 'Family & Names',
@@ -99,7 +99,7 @@ function defaultProfile(): LearnerProfile {
   }
   return {
     userName: 'MAYA',
-    personalWords: ['HANNAH', 'ADVIL', 'BOOK', 'COFFEE'],
+    personalWords: ['HANNAH', 'INSULIN', 'BOOK', 'COFFEE'],
     dominantHand: 'right',
     soundEnabled: true,
     ghostOpacityLevel: 'full',

@@ -16,7 +16,8 @@ The recorder captures **hand-joint poses only** (25 joints per hand, plus the he
    **Add `?recorder=1` to open the recorder**, e.g. `https://<laptop LAN IP>:8081/?recorder=1`. The plain URL opens the learner trainer, which records nothing. `?letters=…` or `?words=…` also open the recorder.
    **Headset can't reach the laptop?** Use the hosted recorder instead: `https://mirrorless-two.vercel.app/?recorder=1`. Takes are then kept in the headset and imported afterwards (section 6).
 3. **Don't edit project files while recording.** Any code change hot-reloads the page and ends the XR session.
-4. Sit in good, even light. Take off rings and bracelets if you can, and wipe the headset's tracking cameras.
+4. **Palm direction is part of the letter.** Sign every letter with the palm facing away from you (you see your knuckles), except C and O (palm to the side), G and H (palm toward you) and P and Q (palm down). The recorder now refuses a palm that faces the wrong way, and `pnpm eval:recordings` skips such takes.
+5. Sit in good, even light. Take off rings and bracelets if you can, and wipe the headset's tracking cameras.
 
 ## 2. Start
 

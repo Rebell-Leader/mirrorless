@@ -117,7 +117,7 @@ export function mountSetupOverlay(world: World): void {
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
         <button data-preset="caregiver" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #0d9488;background:#134e4a;color:#ccfbf1;cursor:pointer;font-size:12px;">
-          Caregiver & Meds (MAYA, HANNAH, ADVIL, TYLENOL)
+          Caregiver & Meds (MAYA, HANNAH, INSULIN, IBUPROFEN)
         </button>
         <button data-preset="family" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #0d9488;background:#134e4a;color:#ccfbf1;cursor:pointer;font-size:12px;">
           Family & Names (ALEX, EMMA, NOAH, PARK)

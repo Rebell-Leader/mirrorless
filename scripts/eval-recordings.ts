@@ -10,10 +10,15 @@
  *   (accuracy on graded attempts vs. share of attempts graded) over margins.
  * - Writes the full model (all takes) to <out>/templates-<hand>.json with the
  *   suggested abstention margin and per-letter reliability.
+ * - Skips static takes whose palm faces the wrong way for the letter (most
+ *   letters are signed palm away from you), so a palm-toward-you "L" never
+ *   becomes an L template. Pass --keep-wrong-palm to include them anyway.
  */
 
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { LETTER_INDEX } from '../src/asl-letters.ts';
+import { checkPalm } from '../src/finger-gate.ts';
 import { classify, medianVector, trainModel, type LabeledVector } from '../src/recognizer.ts';
 import { validateTake, type RecordingTake } from '../src/recording-schema.ts';
 
@@ -56,6 +61,15 @@ async function loadTakes(dir: string): Promise<Array<{ take: RecordingTake; file
   return out;
 }
 
+/** Share of a take's frames whose palm direction matches the letter's. */
+function palmMatchShare(take: RecordingTake): number {
+  const want = LETTER_INDEX[take.label]?.palm;
+  if (!want || take.frames.length === 0) return 1;
+  let ok = 0;
+  for (const f of take.frames) if (checkPalm(want, f.features) === null) ok++;
+  return ok / take.frames.length;
+}
+
 function pct(x: number): string {
   return `${(x * 100).toFixed(0)}%`.padStart(4);
 }
@@ -68,8 +82,11 @@ async function main(): Promise<void> {
   const all = await loadTakes(dir);
   const words = all.filter((t) => t.take.kind === 'word' && t.take.hand === hand);
   const motionLetters = all.filter((t) => t.take.kind === 'letter' && t.take.motion && t.take.hand === hand);
-  const samples: Sample[] = all
-    .filter((t) => t.take.kind === 'letter' && !t.take.motion && t.take.hand === hand)
+  const keepWrongPalm = process.argv.includes('--keep-wrong-palm');
+  const staticTakes = all.filter((t) => t.take.kind === 'letter' && !t.take.motion && t.take.hand === hand);
+  const wrongPalm = staticTakes.filter((t) => palmMatchShare(t.take) < 0.5);
+  const samples: Sample[] = staticTakes
+    .filter((t) => keepWrongPalm || !wrongPalm.includes(t))
     .map((t) => ({
       label: t.take.label,
       session: t.take.sessionId,
@@ -79,6 +96,12 @@ async function main(): Promise<void> {
 
   console.log(`Recordings in ${dir} (${hand} hand)`);
   console.log(`  static letter takes: ${samples.length}`);
+  if (wrongPalm.length > 0) {
+    const letters = [...new Set(wrongPalm.map((t) => t.take.label))].sort().join('');
+    console.log(
+      `  palm facing the wrong way: ${wrongPalm.length} takes (${letters}) ${keepWrongPalm ? 'KEPT (--keep-wrong-palm)' : 'skipped; re-record them palm away from you'}`,
+    );
+  }
   console.log(`  motion letter takes (J/Z, not evaluated yet): ${motionLetters.length}`);
   console.log(`  word takes (not evaluated yet): ${words.length}`);
   if (samples.length < 4) {
