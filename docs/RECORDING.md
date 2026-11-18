@@ -6,14 +6,14 @@ The recorder captures **hand-joint poses only** (25 joints per hand, plus the he
 
 1. Make sure the dev server is running on the laptop. If it isn't, start it:
    ```bash
-   cd /home/obi/meta-vr-hackathon && pnpm dev
+   pnpm dev
    ```
 2. Get the URL for the Quest:
    ```bash
-   cd /home/obi/meta-vr-hackathon && ./node_modules/.bin/iwsdk dev status | grep -A3 network
+   ./node_modules/.bin/iwsdk dev status | grep -A3 network
    ```
-   Last time it was `https://192.168.2.184:8081/`. The Quest must be on the same Wi-Fi.
-   **Add `?recorder=1` to open the recorder**, e.g. `https://192.168.2.184:8081/?recorder=1`. The plain URL opens the learner trainer, which records nothing. `?letters=…` or `?words=…` also open the recorder.
+   It looks like `https://<laptop LAN IP>:8081/`. The Quest must be on the same Wi-Fi.
+   **Add `?recorder=1` to open the recorder**, e.g. `https://<laptop LAN IP>:8081/?recorder=1`. The plain URL opens the learner trainer, which records nothing. `?letters=…` or `?words=…` also open the recorder.
    **Headset can't reach the laptop?** Use the hosted recorder instead: `https://mirrorless-two.vercel.app/?recorder=1`. Takes are then kept in the headset and imported afterwards (section 6).
 3. **Don't edit project files while recording.** Any code change hot-reloads the page and ends the XR session.
 4. Sit in good, even light. Take off rings and bracelets if you can, and wipe the headset's tracking cameras.
@@ -67,7 +67,7 @@ The evaluation needs **at least two separate sessions** to give an honest number
 ## 5. After a session
 
 ```bash
-cd /home/obi/meta-vr-hackathon && pnpm eval:recordings
+pnpm eval:recordings
 ```
 
 It prints:
@@ -91,7 +91,7 @@ Use this when the headset can't reach the laptop, for example on a Wi-Fi that bl
 4. Copy that file to the laptop. With the USB-C cable, put the headset on and allow file access when asked. The laptop's file manager then shows *Quest 3 → Internal shared storage → Download*. Uploading the file to your own cloud drive from the Quest browser works too.
 5. On the laptop:
    ```bash
-   cd /home/obi/meta-vr-hackathon && pnpm import:takes ~/Downloads/mirrorless-takes-*.json && pnpm eval:recordings
+   pnpm import:takes ~/Downloads/mirrorless-takes-*.json && pnpm eval:recordings
    ```
    The import writes the takes into `data/recordings/<session>/`, the same as a laptop session. It skips takes that are already there, so importing a file twice is safe.
 6. After the import succeeds, press **Delete stored takes** on the recorder page to free the headset's storage. Clearing the Quest browser's site data also deletes them, so download after every session.

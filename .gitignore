@@ -52,3 +52,12 @@ artifacts/
 
 # Vercel CLI project link
 .vercel/
+
+# Headset take bundles downloaded from the recorder page (raw hand data)
+mirrorless-takes-*.json
+
+# Local submission and competition notes (personal details, internal review)
+SUBMISSION.md
+docs/HACKATHON_REVIEW.md
+*.pdf
+
