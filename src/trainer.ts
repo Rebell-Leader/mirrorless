@@ -7,7 +7,7 @@
  *   2. My Name & Personal Words: hybrid grader with plain-English finger hints
  *      and honest abstention on occluded thumb-in-fist letters (M/N/T/S/E/R/A)
  *      and motion letters (J/Z). Abstained letters are never passed by the app:
- *      the learner compares with the Ghost Hand and taps "Looks right".
+ *      the learner compares with the Ghost Hand and chooses "Compare and continue".
  *      After the letters, the learner spells the whole word once, in one go;
  *      that attempt is recorded for the replay and the bounce check.
  *   3. Reader's View Replay on Table: replays the learner's own recorded hand,
@@ -34,7 +34,7 @@ import {
   XRPlane,
 } from '@iwsdk/core';
 import { ASL_LETTERS, type AslLetter, LETTER_INDEX } from './asl-letters.js';
-import { F, FEATURE_COUNT, FINGER_NAMES, type Handedness, J, JOINT_COUNT } from './hand-features.js';
+import { F, FEATURE_COUNT, type Handedness, J, JOINT_COUNT } from './hand-features.js';
 import {
   analyzeWordDynamics,
   buildCanonicalModel,
@@ -51,8 +51,6 @@ import { handState } from './hand-state.js';
 import type { TextElement } from './probe.js';
 import { gradeAttempt, type GradeVerdict, type TemplateModel } from './recognizer.js';
 import {
-  getLetterReliability,
-  HAS_COMMON_SIGN,
   type LearnerProfile,
   loadProfile,
   recordLetterOutcome,
@@ -74,7 +72,7 @@ const SPEED_MS: Record<SpeedTier, number> = {
 
 const SPEED_LABELS: Record<SpeedTier, string> = {
   slow: 'Speed: Slow',
-  normal: 'Speed: Normal',
+  normal: 'Speed: Medium',
   fast: 'Speed: Fast',
 };
 
@@ -100,13 +98,12 @@ const TABLE_MAX_DIST = 1.3;
 const TABLE_REJECT_LABEL = /floor|ceiling|wall|door|window|couch|sofa|bed|screen|lamp|plant|art/u;
 
 const BANNER_COLORS: Record<string, string> = {
-  idle: '#3a3d44',
-  hold: '#8a6d00',
-  pass: '#137a52',
-  self: '#23478a',
-  replay: '#5b3688',
-  warn: '#8f2d2d',
-  rec: '#b42318',
+  idle: '#273644',
+  hold: '#394050',
+  pass: '#215843',
+  self: '#34486b',
+  warn: '#773c32',
+  rec: '#7a323a',
 };
 
 export function isRecorderUrl(): boolean {
@@ -143,7 +140,8 @@ export class TrainerSystem extends createSystem({
   private steadyS = 0;
   private celebrateTimer = 0;
   private lastVerdict: GradeVerdict = 'coach';
-  private lastFeedback = 'Match your hand to the 3D Ghost Hand on your wrist';
+  private lastFeedback = 'Raise your signing hand.';
+  private menuOpen = false;
   private perFinger = new Float32Array([0.5, 0.5, 0.5, 0.5, 0.5]);
   private motionPhase = 0;
 
@@ -180,8 +178,6 @@ export class TrainerSystem extends createSystem({
   private tutorRig!: HandRig;
   private tableGroup!: Group;
   private virtualDeskMesh!: Mesh;
-  private bounceBarMesh!: Mesh;
-  private bounceBarMat!: MeshStandardMaterial;
   private tableSource: 'xr-plane' | 'virtual-fallback' = 'virtual-fallback';
   private tablePlane: Entity | null = null;
   private tablePlaneLabel = '';
@@ -258,18 +254,6 @@ export class TrainerSystem extends createSystem({
     this.virtualDeskMesh.name = 'VirtualFallbackDesk';
     this.tableGroup.add(this.virtualDeskMesh);
 
-    // 3D Wrist Steadiness / Bounce Indicator pillar on the table for Stage 3.
-    const barGeo = new BoxGeometry(0.022, 0.1, 0.022);
-    this.bounceBarMat = new MeshStandardMaterial({
-      color: new Color('#18e08a'),
-      emissive: new Color('#18e08a'),
-      emissiveIntensity: 0.45,
-      roughness: 0.3,
-    });
-    this.bounceBarMesh = new Mesh(barGeo, this.bounceBarMat);
-    this.bounceBarMesh.position.set(0.17, 0.06, 0);
-    this.tableGroup.add(this.bounceBarMesh);
-
     this.world.createTransformEntity(this.tableGroup);
     this.world.createTransformEntity(this.replayRig.root);
     this.world.createTransformEntity(this.tutorRig.root);
@@ -281,8 +265,10 @@ export class TrainerSystem extends createSystem({
 
     // Listen for profile updates from the 2D setup overlay.
     const onProfileChange = () => {
+      const word = this.currentWord();
       this.profile = loadProfile();
       this.rebuildWordList();
+      if (this.stage === 'words' && this.currentWord() !== word) this.setStage('words');
       this.updateTargetFeatures();
       this.renderUI();
     };
@@ -308,6 +294,9 @@ export class TrainerSystem extends createSystem({
           this.needsPlacement = true;
           this.fallbackPlaced = false;
           this.ensureAudio();
+        } else if (this.wordPhase === 'fluent-record') {
+          this.recCount = 0;
+          this.startFluentCapture();
         }
       }),
     );
@@ -357,25 +346,32 @@ export class TrainerSystem extends createSystem({
   private bindUI(): void {
     const panel = this.world.getSceneObject<UIKitMLAsset>('trainer-panel');
     const ids = [
-      'stage-band',
       'stage-title',
-      'streak-badge',
+      'practice-body',
       'trainer-letter',
       'trainer-word-progress',
       'trainer-shape',
-      'trainer-meta',
       'trainer-status',
+      'trainer-progress',
       'trainer-bar',
-      'trainer-fingers',
-      'trainer-table-status',
       'choice-row',
+      'next-row',
+      'settings-panel',
+      'btn-settings-label',
+      'btn-choice-0',
+      'btn-choice-1',
+      'btn-choice-2',
       'btn-choice-0-label',
       'btn-choice-1-label',
       'btn-choice-2-label',
+      'btn-next',
       'btn-next-label',
+      'btn-read-replay',
+      'btn-speed',
       'btn-speed-label',
       'btn-trainer-hand-label',
-      'trainer-scope',
+      'btn-trainer-ghost-label',
+      'btn-switch-word',
     ];
     for (const id of ids) {
       this.text[id] = panel?.getElementById(id) as TextElement | undefined;
@@ -395,13 +391,34 @@ export class TrainerSystem extends createSystem({
       this.cleanupFuncs.push(() => el.removeEventListener('click', fn));
     };
 
+    bind('btn-settings', () => {
+      this.menuOpen = !this.menuOpen;
+      if (this.menuOpen && this.wordPhase === 'fluent-record') {
+        this.recCount = 0;
+        this.startFluentCapture();
+      }
+      this.syncStageVisibility();
+      this.renderUI();
+    });
     bind('btn-mode-warmup', () => this.setStage('warmup'));
     bind('btn-mode-words', () => this.setStage('words'));
     bind('btn-mode-replay', () => this.setStage('replay'));
     bind('btn-mode-reading', () => this.setStage('reading'));
     bind('btn-next', () => this.handleNextOrSelfCheck());
     bind('btn-speed', () => this.cycleSpeed());
+    bind('btn-read-replay', () => {
+      this.readingElapsedMs = 0;
+    });
     bind('btn-trainer-hand', () => this.toggleHand());
+    bind('btn-trainer-ghost', () => {
+      this.profile.ghostOpacityLevel = this.profile.ghostOpacityLevel === 'full' ? 'faded' : 'full';
+      saveProfile(this.profile);
+      this.renderUI();
+    });
+    bind('btn-switch-word', () => {
+      this.wordIdx = (this.wordIdx + 1) % this.wordList.length;
+      this.setStage('words');
+    });
     bind('btn-trainer-recenter', () => {
       this.needsPlacement = true;
       this.fallbackPlaced = false;
@@ -464,15 +481,17 @@ export class TrainerSystem extends createSystem({
 
   public setStage(next: TrainerStage): void {
     this.stage = next;
+    this.menuOpen = false;
+    this.lastVerdict = 'coach';
     this.steadyS = 0;
     this.celebrateTimer = 0;
     this.wordPhase = 'letters';
     if (next === 'warmup') {
       this.warmupIdx = 0;
-      this.lastFeedback = 'Slide your hand into the 3D Ghost Hand on your wrist';
+      this.lastFeedback = 'Match the guide on your wrist.';
     } else if (next === 'words') {
       this.charIdx = 0;
-      this.lastFeedback = `Spell "${this.currentWord()}" - match each letter to the Ghost Hand`;
+      this.lastFeedback = 'Match the guide on your wrist.';
     } else if (next === 'replay') {
       // Replay the learner's own one-go attempt; without one, fall back to a
       // clearly labelled synthetic reference hand and say the check has no data.
@@ -497,21 +516,21 @@ export class TrainerSystem extends createSystem({
 
   private syncStageVisibility(): void {
     const inLetters = this.stage === 'warmup' || (this.stage === 'words' && this.wordPhase === 'letters');
-    this.ghostRig.root.visible = inLetters;
+    this.ghostRig.root.visible = inLetters && !this.menuOpen;
     this.replayRig.root.visible = this.stage === 'replay';
     this.tutorRig.root.visible = this.stage === 'reading';
     this.tableGroup.visible = this.stage === 'replay' || this.stage === 'reading';
-    this.bounceBarMesh.visible = this.stage === 'replay';
   }
 
   update(delta: number): void {
-    if (!this.active) return;
+    if (!this.active || this.world.visibilityState.peek() !== VisibilityState.Visible) return;
 
     if (this.needsPlacement && handState.headValid) {
       this.placeErgonomicLayout();
     }
 
     this.updateTableAnchor(delta);
+    if (this.menuOpen) return;
 
     const h = handState[this.profile.dominantHand];
     const scale = h.valid ? Math.max(0.065, Math.min(0.13, h.features[F.handScale])) : 0.09;
@@ -599,7 +618,9 @@ export class TrainerSystem extends createSystem({
 
     if (this.celebrateTimer > 0) {
       this.celebrateTimer = Math.max(0, this.celebrateTimer - delta);
-      this.ghostRig.updateGhostFeedback([1, 1, 1, 1, 1], 1, 'pass', false);
+      this.ghostRig.updateGhostFeedback(
+        this.perFinger, 1, this.lastVerdict === 'pass' ? 'pass' : 'self-check', false,
+      );
       if (this.celebrateTimer === 0) {
         this.advanceToNextLetter();
       }
@@ -609,8 +630,9 @@ export class TrainerSystem extends createSystem({
     if (!handValid) {
       // Hand left view mid-letter: pause hold timer without penalty (Judge check J9).
       this.steadyS = Math.max(0, this.steadyS - delta * 0.5);
-      this.lastFeedback = `Show your ${this.profile.dominantHand} hand in front of you to match "${letter.letter}"`;
-      this.ghostRig.updateGhostFeedback([0.5, 0.5, 0.5, 0.5, 0.5], 0, 'idle', false);
+      this.lastFeedback = `Raise your ${this.profile.dominantHand} hand.`;
+      this.perFinger.fill(0.5);
+      this.ghostRig.updateGhostFeedback(this.perFinger, 0, 'idle', false);
       return;
     }
 
@@ -631,13 +653,10 @@ export class TrainerSystem extends createSystem({
       }
     } else if (grade.verdict === 'self-check') {
       // Honest abstention: the app never passes this letter itself. A steady hold
-      // only marks it ready; the learner must compare and tap "Looks right".
+      // only marks it ready for the learner to compare.
       this.steadyS = Math.min(HOLD_SELF_CHECK_S, this.steadyS + delta);
       const prog = this.steadyS / HOLD_SELF_CHECK_S;
       this.ghostRig.updateGhostFeedback(this.perFinger, prog, 'self-check', faded);
-      if (this.steadyS >= HOLD_SELF_CHECK_S) {
-        this.lastFeedback = `Holding steady. Compare with the Ghost Hand beside yours - if "${letter.letter}" matches, tap "Looks right"`;
-      }
     } else {
       this.steadyS = Math.max(0, this.steadyS - delta * 1.5);
       const prog = Math.min(1, this.steadyS / HOLD_PASS_S);
@@ -653,8 +672,8 @@ export class TrainerSystem extends createSystem({
     this.lastVerdict = outcome;
     this.lastFeedback =
       outcome === 'pass'
-        ? `Great! "${letter}" matched cleanly.`
-        : `You confirmed "${letter}" against the Ghost Hand (self-check, not graded).`;
+        ? `${letter} matched.`
+        : 'Self-check saved.';
     this.chimeSuccess();
     this.renderUI();
   }
@@ -667,7 +686,6 @@ export class TrainerSystem extends createSystem({
     this.celebrateTimer = 0;
     this.lastVerdict = 'coach';
     this.advanceToNextLetter();
-    this.lastFeedback = `Skipped "${letter}" (not graded). ${this.lastFeedback}`;
     this.renderUI();
   }
 
@@ -676,7 +694,7 @@ export class TrainerSystem extends createSystem({
       if (this.warmupIdx + 1 < WARMUP_LETTERS.length) {
         this.warmupIdx++;
         this.updateTargetFeatures();
-        this.lastFeedback = `Now form "${this.currentLetterObj().letter}" on the Ghost Hand`;
+        this.lastFeedback = 'Match the guide on your wrist.';
       } else {
         // Completed L -> B -> Y warmup! Move into spelling the learner's own name.
         this.setStage('words');
@@ -689,7 +707,7 @@ export class TrainerSystem extends createSystem({
       if (this.charIdx + 1 < word.length) {
         this.charIdx++;
         this.updateTargetFeatures();
-        this.lastFeedback = `Next letter in ${word}: "${this.currentLetterObj().letter}"`;
+        this.lastFeedback = 'Match the guide on your wrist.';
       } else {
         // Every letter done: now spell the whole word once, in one go.
         this.profile.wordsCompleted++;
@@ -709,7 +727,7 @@ export class TrainerSystem extends createSystem({
     this.celebrateTimer = 0;
     const word = this.currentWord();
     this.fluentWindowS = Math.min(9, Math.max(3, word.length * 0.9 + 1.5));
-    this.lastFeedback = `Get ready to spell "${word}" in one go`;
+    this.lastFeedback = 'Get your hand in view.';
     this.syncStageVisibility();
     this.renderUI();
   }
@@ -724,7 +742,7 @@ export class TrainerSystem extends createSystem({
         this.recLastMs = -1;
         this.recStartMs = handState.time;
         this.recWord = this.currentWord();
-        this.lastFeedback = `Recording - spell "${this.recWord}" now, at a steady pace`;
+        this.lastFeedback = 'Spell the whole word.';
       }
       return;
     }
@@ -827,17 +845,6 @@ export class TrainerSystem extends createSystem({
     }
     this.replayRig.updateFromPoses(this.replayPoses);
 
-    // Update 3D bounce indicator bar on the table.
-    const dyn = this.lastDynamics;
-    if (dyn?.measured) {
-      this.bounceBarMat.color.set(dyn.isBouncy ? '#f5a623' : '#18e08a');
-      this.bounceBarMat.emissive.set(dyn.isBouncy ? '#b86b00' : '#0c9f5f');
-      this.bounceBarMesh.scale.set(1, Math.min(2.2, Math.max(0.4, (dyn.bounceCm + 1) / 3)), 1);
-    } else {
-      this.bounceBarMat.color.set('#6b7280');
-      this.bounceBarMat.emissive.set('#1f2937');
-      this.bounceBarMesh.scale.set(1, 0.4, 1);
-    }
   }
 
   // ---------------------------------------------------------------- Stage 4: Table Reading Mode
@@ -864,7 +871,7 @@ export class TrainerSystem extends createSystem({
     this.readingChoices = rotated;
     this.readingElapsedMs = 0;
     this.readingAnswered = 'none';
-    this.lastFeedback = 'Watch the Synthetic Tutor Hand on your table, then tap the matching word';
+    this.lastFeedback = 'Watch the practice hand.';
   }
 
   private stepReadingStage(delta: number, scale: number): void {
@@ -1028,8 +1035,7 @@ export class TrainerSystem extends createSystem({
 
   public handleNextOrSelfCheck(): void {
     if (this.stage === 'words' && this.wordPhase !== 'letters') {
-      // "Done": stop the one-go recording early and show the replay.
-      this.finishFluentCapture();
+      if (this.wordPhase === 'fluent-record') this.finishFluentCapture();
     } else if (this.stage === 'warmup' || this.stage === 'words') {
       this.skipLetter();
     } else if (this.stage === 'replay') {
@@ -1049,10 +1055,8 @@ export class TrainerSystem extends createSystem({
   private handleChoice(idx: number): void {
     if (this.stage === 'words' && this.wordPhase !== 'letters') {
       if (idx === 0) {
-        this.startFluentCapture(); // start over
-      } else if (idx === 1) {
-        this.finishFluentCapture(); // done: show replay
-      } else {
+        this.startFluentCapture();
+      } else if (idx === 2) {
         // Skip the one-go attempt: replay will say there is no recording.
         this.recCount = 0;
         this.recWord = this.currentWord();
@@ -1062,19 +1066,7 @@ export class TrainerSystem extends createSystem({
     }
 
     if (this.stage === 'warmup' || this.stage === 'words') {
-      if (idx === 0) {
-        // "Looks right": the learner confirms the shape against the Ghost Hand.
-        this.triggerLetterSuccess('self-check');
-      } else if (idx === 1) {
-        // Toggle Ghost opacity (Full vs Faded).
-        this.profile.ghostOpacityLevel = this.profile.ghostOpacityLevel === 'full' ? 'faded' : 'full';
-        saveProfile(this.profile);
-        this.renderUI();
-      } else if (idx === 2) {
-        // Skip to next word in list.
-        this.wordIdx = (this.wordIdx + 1) % this.wordList.length;
-        this.setStage('words');
-      }
+      if (idx === 0 && this.celebrateTimer <= 0) this.triggerLetterSuccess('self-check');
       return;
     }
 
@@ -1082,9 +1074,6 @@ export class TrainerSystem extends createSystem({
       if (idx === 0) {
         this.replayElapsedMs = 0;
         this.replayCursor = 0;
-        this.lastFeedback = this.replayHasRecording
-          ? `Replaying your "${this.replayWord}" from a Deaf reader's point of view...`
-          : `Replaying the synthetic reference "${this.replayWord}" (no recording of yours yet)`;
       } else if (idx === 1) {
         // Record another one-go attempt of the same word.
         this.startFluentCapture();
@@ -1097,6 +1086,7 @@ export class TrainerSystem extends createSystem({
     }
 
     if (this.stage === 'reading') {
+      if (this.readingAnswered === 'correct') return;
       const picked = this.readingChoices[idx];
       this.profile.readingRounds++;
       if (picked === this.readingTarget) {
@@ -1108,13 +1098,13 @@ export class TrainerSystem extends createSystem({
         if (this.readingStreak >= 2 && this.speedTier === 'slow') {
           this.speedTier = 'normal';
           this.readingStreak = 0;
-          this.lastFeedback = `Correct ("${picked}")! Speed increased to Normal (480 ms/letter).`;
+          this.lastFeedback = 'Correct. Speed increased to medium.';
         } else if (this.readingStreak >= 2 && this.speedTier === 'normal') {
           this.speedTier = 'fast';
           this.readingStreak = 0;
-          this.lastFeedback = `Correct ("${picked}")! Speed increased to Fast (330 ms/letter).`;
+          this.lastFeedback = 'Correct. Speed increased to fast.';
         } else {
-          this.lastFeedback = `Correct! The Synthetic Tutor Hand spelled "${picked}". Tap Next Word for another round.`;
+          this.lastFeedback = 'Ready for another word.';
         }
         saveProfile(this.profile);
       } else {
@@ -1122,7 +1112,7 @@ export class TrainerSystem extends createSystem({
         this.readingStreak = 0;
         this.replayElapsedMs = 0;
         this.readingElapsedMs = 0;
-        this.lastFeedback = `Not "${picked}" - watch the Tutor Hand replay the word on your table and try again.`;
+        this.lastFeedback = 'Watch again and try another answer.';
         this.beep(260, 0.18);
       }
       this.renderUI();
@@ -1173,209 +1163,119 @@ export class TrainerSystem extends createSystem({
     this.text[id]?.setProperties(props);
   }
 
+  private showUI(id: string, visible: boolean): void {
+    this.setText(id, { display: visible ? 'flex' : 'none' });
+  }
+
   private renderUI(): void {
-    const masteredCount = Object.values(this.profile.letters).filter((l) => l.passes + l.selfChecks >= 1).length;
-    this.setText('streak-badge', {
-      text: `Streak: ${this.profile.streakDays}d | ${masteredCount}/26 letters | ${this.profile.wordsCompleted} words`,
-    });
-    this.setText('btn-trainer-hand-label', { text: `Hand: ${this.profile.dominantHand}` });
+    const signing = this.stage === 'warmup' || (this.stage === 'words' && this.wordPhase === 'letters');
+    const capturing = this.stage === 'words' && this.wordPhase !== 'letters';
+    const recording = capturing && this.wordPhase === 'fluent-record';
+    const replay = this.stage === 'replay';
+    const reading = this.stage === 'reading';
+    const celebrating = signing && this.celebrateTimer > 0;
+    const displayPractice = !this.menuOpen;
+
+    this.setText('btn-settings-label', { text: this.menuOpen ? 'Close' : 'Menu' });
+    this.setText('btn-trainer-hand-label', { text: this.profile.dominantHand === 'left' ? 'Left hand' : 'Right hand' });
+    this.setText('btn-trainer-ghost-label', { text: this.profile.ghostOpacityLevel === 'full' ? 'Dim guide' : 'Brighten guide' });
     this.setText('btn-speed-label', { text: SPEED_LABELS[this.speedTier] });
-    this.setText('trainer-table-status', {
-      text:
-        this.tableSource === 'xr-plane'
-          ? `Table: anchored to your real ${this.tablePlaneLabel || 'table'}`
-          : 'Table: virtual desk (no real table found nearby)',
-    });
+    this.showUI('settings-panel', this.menuOpen);
+    this.showUI('btn-switch-word', this.stage === 'words' && !capturing && this.wordList.length > 1);
+    this.showUI('practice-body', displayPractice);
+    this.showUI('choice-row', displayPractice && !celebrating);
+    const longAnswers = reading && this.readingChoices.some((word) => word.length > 9);
+    this.setText('choice-row', { flexDirection: longAnswers ? 'column' : 'row' });
+    this.showUI('btn-choice-1', replay || reading);
+    const hasNextWord = this.wordIdx + 1 < this.wordList.length;
+    this.showUI('btn-choice-2', capturing || (replay && hasNextWord) || reading);
+    this.showUI('next-row', displayPractice && !celebrating && (!capturing || recording));
+    this.showUI('btn-read-replay', reading);
+    this.showUI('btn-speed', reading);
+    this.showUI('trainer-progress', signing || capturing);
+    this.showUI('trainer-word-progress', !replay);
 
-    if (this.stage === 'words' && this.wordPhase !== 'letters') {
-      this.renderFluentUI();
+    if (this.menuOpen) {
+      this.setText('stage-title', { text: 'Practice menu' });
       return;
     }
 
-    if (this.stage === 'warmup' || this.stage === 'words') {
+    if (signing) {
+      const warmup = this.stage === 'warmup';
       const letter = this.currentLetterObj();
-      const rel = getLetterReliability(letter.letter);
-      const relText =
-        rel === 'auto-high'
-          ? 'Auto-graded (high tracker reliability)'
-          : rel === 'auto-medium'
-            ? 'Auto-graded (medium reliability)'
-            : 'Not graded: thumb hidden or movement - you confirm against the Ghost Hand';
-
-      if (this.stage === 'warmup') {
-        this.setText('stage-title', { text: 'STAGE 1 OF 4: GHOST HAND WARMUP (L - B - Y)' });
-        this.setText('stage-band', { backgroundColor: '#0b6b5a' });
-        const pills = WARMUP_LETTERS.map((l, i) => (i === this.warmupIdx ? `[${l}]` : l)).join(' -> ');
-        this.setText('trainer-word-progress', { text: `WARMUP: ${pills}` });
-      } else {
-        const word = this.currentWord();
-        this.setText('stage-title', {
-          text: `STAGE 2 OF 4: SPELL YOUR WORD (${this.wordIdx + 1}/${this.wordList.length})`,
-        });
-        this.setText('stage-band', { backgroundColor: '#0e7490' });
-        const pills = word
-          .split('')
-          .map((ch, i) => (i === this.charIdx ? `[${ch}]` : ch))
-          .join(' ');
-        this.setText('trainer-word-progress', { text: `WORD: ${pills}` });
-      }
-
-      this.setText('trainer-letter', { text: letter.letter, fontSize: 108 });
-      this.setText('trainer-shape', { text: letter.shape });
-
-      const signNotice = this.stage === 'words' ? HAS_COMMON_SIGN[this.currentWord()] : undefined;
-      this.setText('trainer-meta', {
-        text: signNotice ? `${relText} | Note: ${signNotice}` : `Palm ${letter.palm} | ${relText}`,
-      });
-
+      const word = this.currentWord();
       const needS = this.lastVerdict === 'self-check' ? HOLD_SELF_CHECK_S : HOLD_PASS_S;
-      const pct = this.celebrateTimer > 0 ? 100 : Math.min(100, Math.round((this.steadyS / needS) * 100));
-      this.setText('trainer-bar', { width: `${pct}%` });
-
-      const statusCol =
-        this.celebrateTimer > 0
-          ? BANNER_COLORS.pass
-          : this.lastVerdict === 'pass'
-            ? BANNER_COLORS.pass
-            : this.lastVerdict === 'self-check'
-              ? BANNER_COLORS.self
-              : this.steadyS > 0.05
-                ? BANNER_COLORS.hold
-                : BANNER_COLORS.idle;
-      this.setText('trainer-status', { text: this.lastFeedback, backgroundColor: statusCol });
-
-      const fSummary = FINGER_NAMES.map((name, i) => {
-        const s = this.perFinger[i];
-        return `${name[0].toUpperCase()}:${s >= 0.7 ? 'OK' : 'fix'}`;
-      }).join('  ');
-      this.setText('trainer-fingers', {
-        text: `Per-finger match: ${fSummary} | Ghost: ${this.profile.ghostOpacityLevel}`,
-      });
-
-      this.setText('btn-choice-0-label', { text: 'Looks right (self-check)' });
-      this.setText('btn-choice-1-label', {
-        text: this.profile.ghostOpacityLevel === 'full' ? 'Fade Ghost' : 'Full Ghost',
-      });
-      this.setText('btn-choice-2-label', { text: 'Switch Word' });
-      this.setText('btn-next-label', { text: 'Skip Letter' });
-      return;
-    }
-
-    if (this.stage === 'replay') {
-      const dyn = this.lastDynamics ?? analyzeWordDynamics([], this.replayWord);
-      this.setText('stage-title', { text: "STAGE 3 OF 4: READER'S VIEW REPLAY ON YOUR TABLE" });
-      this.setText('stage-band', { backgroundColor: '#5b3688' });
-      this.setText('trainer-letter', { text: this.replayWord, fontSize: this.replayWord.length <= 4 ? 64 : 42 });
+      this.setText('stage-title', { text: warmup ? 'Warmup' : 'Spell a name' });
+      this.setText('trainer-letter', { text: letter.letter, fontSize: 76 });
       this.setText('trainer-word-progress', {
-        text: dyn.measured
-          ? `READER'S VIEW: Steadiness ${dyn.steadinessScore}/100 | vertical swing ${dyn.bounceCm.toFixed(1)} cm`
-          : "READER'S VIEW: bounce not measured (no one-go recording)",
+        text: warmup ? `Letter ${this.warmupIdx + 1} of ${WARMUP_LETTERS.length}` : `${word} / ${this.charIdx + 1} of ${word.length}`,
       });
-      this.setText('trainer-shape', {
-        text: this.replayHasRecording
-          ? 'The blue hand on your table is your own recorded hand, turned around so you see it the way a Deaf reader across from you would.'
-          : 'No one-go recording yet, so this is a synthetic reference hand, not yours. Tap "Try one-go" to record your own.',
-      });
-      this.setText('trainer-meta', {
-        text: dyn.hasDoubleLetters
-          ? `Double letter (${dyn.doublePair}): slide slightly sideways or re-articulate gently - not graded yet.`
-          : 'Readable fingerspelling stays at one height: the fingers change shape, the wrist does not pump.',
-      });
-      this.setText('trainer-status', {
-        text: dyn.summary,
-        backgroundColor: !dyn.measured ? BANNER_COLORS.idle : dyn.isBouncy ? BANNER_COLORS.warn : BANNER_COLORS.replay,
-      });
-      const totalMs = this.replayHasRecording
-        ? Math.max(1, this.recTimes[this.recCount - 1] - this.recTimes[0])
-        : Math.max(1800, this.replayWord.length * 620);
-      const pct = Math.min(100, Math.round((this.replayElapsedMs / totalMs) * 100));
-      this.setText('trainer-bar', { width: `${pct}%` });
-      this.setText('trainer-fingers', {
-        text: !dyn.measured
-          ? 'Bounce check: no data'
-          : dyn.isBouncy
-            ? `Bounce check: wrist pumping (${dyn.bigSwings} big swings) - keep it level`
-            : `Bounce check: steady | sideways travel ${dyn.sidewaysCm.toFixed(1)} cm`,
-      });
-
-      this.setText('btn-choice-0-label', { text: 'Replay' });
-      this.setText('btn-choice-1-label', { text: 'Try one-go again' });
-      this.setText('btn-choice-2-label', { text: '4. Table Reading' });
-      this.setText('btn-next-label', { text: 'Continue ->' });
-      return;
-    }
-
-    if (this.stage === 'reading') {
-      this.setText('stage-title', {
-        text: 'STAGE 4 OF 4: TABLE READING MODE (SYNTHETIC TUTOR HAND)',
-      });
-      this.setText('stage-band', { backgroundColor: '#1d4ed8' });
-      this.setText('trainer-letter', {
-        text: this.readingAnswered === 'correct' ? this.readingTarget : '???',
-        fontSize: 64,
-      });
-      this.setText('trainer-word-progress', {
-        text: `RECEPTIVE PRACTICE | Score: ${this.profile.readingScore}/${this.profile.readingRounds} | Tier: ${this.speedTier.toUpperCase()}`,
-      });
-      this.setText('trainer-shape', {
-        text: 'Read the whole word shape on your table, then poke or select the matching word below.',
-      });
-      this.setText('trainer-meta', {
-        text: `Synthetic Tutor Hand (${SPEED_MS[this.speedTier]} ms/letter) - algorithmic pose sequence, not a Deaf signer recording.`,
-      });
+      this.setText('trainer-shape', { text: letter.shape });
       this.setText('trainer-status', {
         text: this.lastFeedback,
-        backgroundColor:
-          this.readingAnswered === 'correct'
-            ? BANNER_COLORS.pass
-            : this.readingAnswered === 'wrong'
-              ? BANNER_COLORS.warn
-              : BANNER_COLORS.self,
+        backgroundColor: this.lastVerdict === 'pass' ? BANNER_COLORS.pass :
+          this.lastVerdict === 'self-check' ? BANNER_COLORS.self : BANNER_COLORS.idle,
       });
-      const totalMs = this.readingTarget.length * SPEED_MS[this.speedTier];
-      const pct = Math.min(100, Math.round((this.readingElapsedMs / totalMs) * 100));
-      this.setText('trainer-bar', { width: `${pct}%` });
-      this.setText('trainer-fingers', {
-        text: 'Tip: watch the overall word envelope (open/closed transitions), not isolated letters',
-      });
+      this.setText('trainer-bar', { width: `${celebrating ? 100 : Math.min(100, Math.round(this.steadyS / needS * 100))}%` });
+      this.setText('btn-choice-0-label', { text: 'Compare and continue' });
+      this.setText('btn-next-label', { text: 'Skip letter' });
+      return;
+    }
 
+    if (capturing) {
+      const word = this.currentWord();
+      const duration = recording ? this.fluentWindowS : FLUENT_LEAD_IN_S;
+      const remaining = Math.max(0, duration - this.phaseTimer);
+      this.setText('stage-title', { text: recording ? 'Recording' : 'Get ready' });
+      this.setText('trainer-letter', { text: word, fontSize: word.length <= 6 ? 62 : 42 });
+      this.setText('trainer-word-progress', { text: recording ? `${Math.ceil(remaining)} s left` : 'Spell the whole word in one go.' });
+      this.setText('trainer-shape', { text: 'This attempt becomes your replay.' });
+      this.setText('trainer-status', {
+        text: handState[this.profile.dominantHand].valid ? this.lastFeedback : 'Keep your hand in view.',
+        backgroundColor: recording ? BANNER_COLORS.rec : BANNER_COLORS.hold,
+      });
+      this.setText('trainer-bar', { width: `${Math.round(remaining / duration * 100)}%` });
+      this.setText('btn-choice-0-label', { text: 'Start over' });
+      this.setText('btn-choice-2-label', { text: 'Skip recording' });
+      this.setText('btn-next-label', { text: 'Done' });
+      return;
+    }
+
+    if (replay) {
+      const word = this.replayWord;
+      this.setText('stage-title', { text: this.replayHasRecording ? 'Your replay' : 'Example replay' });
+      this.setText('trainer-letter', { text: word, fontSize: word.length <= 6 ? 62 : 42 });
+      this.setText('trainer-shape', {
+        text: this.tableSource === 'xr-plane' ? 'Look at your table.' : 'Look at the virtual desk.',
+      });
+      this.setText('trainer-status', {
+        text: !this.replayHasRecording ? 'Record an attempt to see your own hand.' :
+          this.lastDynamics?.isBouncy ? 'Watch for repeated up-and-down wrist movement.' : 'Watch how your letters flow together.',
+        backgroundColor: BANNER_COLORS.idle,
+      });
+      this.setText('btn-choice-0-label', { text: 'Play again' });
+      this.setText('btn-choice-1-label', { text: this.replayHasRecording ? 'Record again' : 'Record attempt' });
+      this.setText('btn-choice-2-label', { text: 'Read a word' });
+      this.setText('btn-next-label', { text: hasNextWord ? 'Next word' : 'Start reading' });
+      return;
+    }
+
+    if (reading) {
+      const correct = this.readingAnswered === 'correct';
+      this.setText('stage-title', { text: 'Read a word' });
+      this.setText('trainer-letter', { text: correct ? this.readingTarget : '?', fontSize: this.readingTarget.length <= 6 ? 62 : 42 });
+      this.setText('trainer-word-progress', { text: correct ? 'Correct' : 'What did the hand spell?' });
+      this.setText('trainer-shape', { text: 'Simulated practice hand' });
+      this.setText('trainer-status', {
+        text: this.lastFeedback,
+        backgroundColor: correct ? BANNER_COLORS.pass :
+          this.readingAnswered === 'wrong' ? BANNER_COLORS.warn : BANNER_COLORS.idle,
+      });
       this.setText('btn-choice-0-label', { text: this.readingChoices[0] });
       this.setText('btn-choice-1-label', { text: this.readingChoices[1] });
       this.setText('btn-choice-2-label', { text: this.readingChoices[2] });
-      this.setText('btn-next-label', { text: 'New Word' });
+      this.setText('btn-next-label', { text: correct ? 'Next word' : 'Skip word' });
     }
-  }
-
-  private renderFluentUI(): void {
-    const word = this.currentWord();
-    const recording = this.wordPhase === 'fluent-record';
-    this.setText('stage-title', { text: `STAGE 2 OF 4: SPELL "${word}" IN ONE GO` });
-    this.setText('stage-band', { backgroundColor: recording ? BANNER_COLORS.rec : '#0e7490' });
-    this.setText('trainer-letter', { text: word, fontSize: word.length <= 4 ? 64 : 42 });
-    this.setText('trainer-word-progress', {
-      text: recording
-        ? `RECORDING: ${Math.max(0, this.fluentWindowS - this.phaseTimer).toFixed(1)} s left`
-        : 'GET READY...',
-    });
-    this.setText('trainer-shape', {
-      text: 'Spell the whole word at a steady, comfortable pace without stopping. This attempt becomes your reader\'s-view replay.',
-    });
-    this.setText('trainer-meta', { text: 'Recorded hand joints stay on this device and are discarded when you leave.' });
-    this.setText('trainer-status', {
-      text: this.lastFeedback,
-      backgroundColor: recording ? BANNER_COLORS.rec : BANNER_COLORS.hold,
-    });
-    const pct = recording
-      ? Math.min(100, Math.round((this.phaseTimer / this.fluentWindowS) * 100))
-      : Math.min(100, Math.round((this.phaseTimer / FLUENT_LEAD_IN_S) * 100));
-    this.setText('trainer-bar', { width: `${pct}%` });
-    this.setText('trainer-fingers', {
-      text: recording ? `Hand frames captured: ${this.recCount}` : 'Ghost Hand hidden: spell from memory',
-    });
-    this.setText('btn-choice-0-label', { text: 'Start over' });
-    this.setText('btn-choice-1-label', { text: 'Done - show replay' });
-    this.setText('btn-choice-2-label', { text: 'Skip one-go' });
-    this.setText('btn-next-label', { text: 'Done' });
   }
 
   // ---------------------------------------------------------------- Audio (Optional, Visual-First Always Active)

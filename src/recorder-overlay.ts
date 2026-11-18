@@ -11,6 +11,7 @@ import { buildTakeBundle, clearTakes, countTakes, TAKES_CHANGED_EVENT } from './
 import { isRecorderUrl } from './trainer.js';
 
 const BUTTON_STYLE = [
+  'min-height:44px',
   'padding:7px 12px',
   'border-radius:8px',
   'border:1px solid rgba(62,230,193,0.5)',
@@ -45,17 +46,16 @@ export function mountRecorderOverlay(world: World): void {
   ].join(';');
   root.innerHTML = `
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;">
-      <strong style="color:#3ee6c1;letter-spacing:0.8px;">MIRRORLESS RECORDER</strong>
-      <span id="rec-store-count" style="flex:1 1 220px;">Checking takes stored in this browser...</span>
+      <strong style="color:#3ee6c1;letter-spacing:0.8px;">Hand recorder</strong>
+      <span id="rec-store-count" style="flex:1 1 220px;">Loading saved takes...</span>
+      <button id="rec-enter" type="button" style="${BUTTON_STYLE}">Start recorder</button>
       <button id="rec-download" type="button" style="${BUTTON_STYLE}" disabled>Download takes</button>
       <button id="rec-clear" type="button" style="${BUTTON_STYLE};border-color:rgba(248,113,113,0.6);background:#3b1414;" disabled>Delete stored takes</button>
-    </div>
-    <div style="margin-top:6px;color:#94a3b8;font-size:12px;line-height:1.4;">
-      When the laptop can't be reached, takes are saved in this browser. Download them, copy the file to the
-      laptop, then run <code style="color:#e2e8f0;">pnpm import:takes &lt;file&gt;</code> and
-      <code style="color:#e2e8f0;">pnpm eval:recordings</code>. Hand-joint data only, no camera images.
+      <a href="https://github.com/Rebell-Leader/mirrorless/blob/master/docs/RECORDING.md" target="_blank" rel="noopener" style="color:#cbd5e1;">Recorder guide</a>
     </div>`;
   document.body.appendChild(root);
+
+  root.querySelector('#rec-enter')?.addEventListener('click', () => world.launchXR());
 
   const countEl = root.querySelector('#rec-store-count') as HTMLSpanElement;
   const downloadBtn = root.querySelector('#rec-download') as HTMLButtonElement;

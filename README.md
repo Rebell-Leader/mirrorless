@@ -1,60 +1,38 @@
 # Mirrorless
 
-A hands-first ASL fingerspelling trainer for Meta Quest, built with the
-Immersive Web SDK (WebXR) for the Meta VR Start Developer Competition 2026.
-See `PROPOSAL.md` for the product plan and `HACKATHON.md` for the rules digest.
+<img src="public/mirrorless.svg" width="64" height="64" alt="" />
 
-## Run it
+Practice ASL fingerspelling on Meta Quest. Spell a name, then replay your own hand from across the table.
 
-This machine's system npm (9.x) cannot install this project, because it can't
-parse the `npm:super-three` alias. Use pnpm via corepack instead (a `pnpm` shim
-is installed in `~/.local/bin`):
+[Open Mirrorless in Quest Browser](https://mirrorless-two.vercel.app)
+
+## Practice
+
+1. Sit facing a clear area. Enable hand tracking, open the link in Quest Browser, and select **Start practice**. Allow the browser’s immersive and hand-tracking prompts.
+2. Match the guide hand on your wrist. A tracked match advances automatically. For a visual self-check, compare your hand with the guide and select **Compare and continue**. Select **Skip letter** to move on.
+3. Spell the full word when you see **Recording**. Let the timer finish or select **Done**. Watch your attempt from the reader’s side, then try another word or switch to **Read a word**. If no suitable table is found, look for the virtual desk.
+
+Use **Personalize** to set a practice name, add up to five comma-separated words, choose your signing hand, or change sound. Names and words use A–Z and are limited to 2–12 letters each. Open the in-headset **Menu** to switch modes, adjust the guide, recenter, or exit. Use **Play again** in reading mode to repeat the hand animation.
+
+## Tracking and privacy
+
+Mirrorless practices the ASL manual alphabet. It offers visual self-checks for A, E, J, M, N, R, S, T and Z, and when the tracker is uncertain. J and Z rely on movement. For a double letter, compare the transition in replay. Reading mode uses a simulated hand. The right-hand model was tested offline on recordings from a single signer. Left-hand grading uses synthetic templates.
+
+Progress stays in browser storage. The latest learner replay stays in memory in the open tab. A copied practice link includes the name, words and hand preference you chose, so use sample names for links you plan to share. Keep practice separate from interpretation and medical communication.
+
+For lessons with Deaf educators, see [ASDC SignOn](https://deafchildren.org/parents-and-families/asl-signon/) and [ASL University](https://www.lifeprint.com/).
+
+## Development
+
+Use the Node version in [`.nvmrc`](.nvmrc) and pnpm. The Immersive Web SDK uses [IWER, its browser-based emulator](https://iwsdk.dev/guides/02-testing-experience.html), for local immersive testing.
 
 ```sh
 pnpm install
-pnpm dev            # starts Vite + the emulator window (IWSDK-managed)
-pnpm test           # hand-feature geometry tests (node:test + tsx)
-pnpm typecheck
-./node_modules/.bin/iwsdk dev down   # stop the dev server
-pnpm deploy:vercel  # build and publish dist/ to https://mirrorless-two.vercel.app
+pnpm dev
 ```
 
-The hosted build is live at **https://mirrorless-two.vercel.app** (Vercel project `mirrorless`). Open it in the Quest browser and press **Enter XR**. No dev server is needed.
+For a headset test, run `pnpm dev:status` and open a reported LAN HTTPS URL in Quest Browser on the same network. The local development certificate prompts for acceptance. Run `pnpm typecheck`, `pnpm test` and `pnpm build` to check a change.
 
-`pnpm-workspace.yaml` sets `nodeLinker: hoisted`. The IWSDK editor runtime
-imports transitive packages that pnpm's strict layout would hide.
-
-## Test on the Quest 3
-
-With the dev server running, open `https://<laptop LAN IP>:8081/` in the Quest
-browser on the same Wi-Fi network (check `iwsdk dev status` for the URL).
-Accept the self-signed certificate warning, then press **Enter XR**.
-
-## Recording hands
-
-See [docs/RECORDING.md](docs/RECORDING.md). In short: open the LAN URL with `?recorder=1` on the Quest, press Enter XR, hold each letter still until it saves, and relax between takes. Then run `pnpm eval:recordings`. Recordings go to `data/recordings/` (git-ignored). If the headset can't reach the laptop, record on `https://mirrorless-two.vercel.app/?recorder=1` instead. Takes are kept in the headset, downloaded as one file from the page, and imported with `pnpm import:takes <file>`.
-
-## Research and plan
-
-- `docs/AUDIT_AND_PLAN.md`: comprehensive project audit, multi-role review, competitor analysis, VR best practices, and Phase 1–2 implementation plan.
-- `docs/SYNTHESIS.md`: what the research and role reviews concluded, the value analysis, and the revised plan.
-- `docs/REVIEW_TASKS.md`: build-review checklists by role (judge, caregiver, Deaf user) plus data validation.
-- `docs/research/`: prior art, science, and data/licensing/validation reports.
-- `docs/reviews/`: simulated role reviews.
-
-## What exists now
-
-- **Learner Experience (default `/`)**:
-  - `src/trainer.ts` + `public/ui/trainer.uikitml`: the 4-stage "First Five Minutes" spatial trainer:
-    1. **Ghost Hand Warmup (`L -> B -> Y`)**: 1st-person wrist-anchored 3D Ghost Hand (`src/hand-rig.ts`) with per-finger green/amber match feedback and wrist progress halo.
-    2. **My Name & Personal Words**: hybrid grader (`src/recognizer.ts` + `src/finger-gate.ts`) with plain-English coaching hints and honest abstention for self-occluded thumb-in-fist letters (`M/N/T/S/E/R/A`) and movement letters (`J/Z`): the app never grades these; you compare with the 3D Ghost Hand and tap **Looks right** (stored as a self-check, not a pass). **Skip Letter** is stored as a skip. After the letters you spell the whole word once, in one go, and that attempt is recorded (in memory only).
-    3. **Reader's View Replay on Table**: replays *your own recorded one-go attempt*, turned 180° so you see it the way a reader across from you would, on a nearby real table (`XRPlane` labelled table/desk or a horizontal surface at seated table height within 1.3 m) or a world-locked virtual desk. A **wrist steadiness check** counts repeated up-and-down swings after filtering out tracker jitter. Double letters (`BOOK`, `ANNA`, `COFFEE`) are explained, not graded. With no recording it shows a labelled synthetic reference hand and says the check has no data.
-    4. **Table Reading Mode (Receptive)**: a clearly labelled **Synthetic Tutor Hand** sits on your table and spells words at rising speed tiers (`Slow / Normal / Fast`) with 3 tactile word-choice buttons.
-  - `src/setup-overlay.ts` + `src/storage.ts`: pre-XR 2D setup bar & drawer for entering your name and personal word list, choosing starter word packs (*Caregiver & Meds*, *Family & Names*, *Double Letters*), generating shareable word-list links, viewing the 26-letter tracker reliability & mastery grid, and linking to Deaf-led ASL learning resources.
-- **Core Math, Pose Synthesis & Recognizer**:
-  - `src/hand-features.ts`: turns the 25 WebXR hand joints into a 52-value hand-shape feature vector (mirrored for the left hand, zero-allocation, unit-tested in `tests/`).
-  - `src/hand-poses.ts`: forward-kinematics 25-joint pose synthesizer for all 26 ASL letters (`A–Z`), `J`/`Z` motion trajectories, coarticulated word playback, and wrist bounce / double-letter dynamics analysis.
-  - `src/asl-letters.ts` + `src/finger-gate.ts` + `src/recognizer.ts`: letter reference, variant-tolerant finger & palm coaching gate, and hybrid template recognizer with margin abstention.
-- **Developer Tools (`?recorder=1` and `?probe=1`)**:
-  - `src/recorder.ts` + `public/ui/recorder.uikitml` + `scripts/recordings-plugin.ts`: headset letter/word dataset recorder (`?recorder=1` or `?letters=...`).
-  - `src/probe.ts` + `public/ui/probe.uikitml`: live feature & scene-understanding probe (`?probe=1`).
+- [Recorder workflow](docs/RECORDING.md) covers `?recorder=1`, take export, and model evaluation.
+- `?probe=1` shows hand-tracking and room detection diagnostics.
+- [Review checklist](docs/REVIEW_TASKS.md) covers headset checks. [Research notes](docs/SYNTHESIS.md) explain the training and feedback choices.

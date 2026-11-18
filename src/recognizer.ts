@@ -168,7 +168,7 @@ export function gradeAttempt(
   if (!gate.pass) {
     return {
       verdict: 'coach',
-      feedback: `Fix: ${gate.problems[0]}`,
+      feedback: `${gate.problems[0][0].toUpperCase()}${gate.problems[0].slice(1)}.`,
       perFinger,
       classification,
     };
@@ -176,7 +176,7 @@ export function gradeAttempt(
   if (palmHint) {
     return {
       verdict: 'coach',
-      feedback: `Fix: ${palmHint}`,
+      feedback: `${palmHint[0].toUpperCase()}${palmHint.slice(1)}.`,
       perFinger,
       classification,
     };
@@ -186,7 +186,7 @@ export function gradeAttempt(
   if (occluded) {
     return {
       verdict: 'self-check',
-      feedback: `Can't see your thumb well enough to grade ${letter.letter}. Compare with the Ghost Hand beside you, then tap "Looks right"`,
+      feedback: 'Use the guide hand to check this shape.',
       perFinger,
       classification,
     };
@@ -196,7 +196,7 @@ export function gradeAttempt(
   if (letter.letter === 'V' && features[F.spread] < 0.09) {
     return {
       verdict: 'coach',
-      feedback: 'Fix: spread your index and middle fingers into a V',
+      feedback: 'Spread your index and middle fingers.',
       perFinger,
       classification,
     };
@@ -204,7 +204,7 @@ export function gradeAttempt(
   if (letter.letter === 'U' && features[F.spread] > 0.18) {
     return {
       verdict: 'coach',
-      feedback: 'Fix: keep your index and middle fingers together for U',
+      feedback: 'Keep your index and middle fingers together.',
       perFinger,
       classification,
     };
@@ -212,7 +212,7 @@ export function gradeAttempt(
   if (letter.letter === 'F' && features[F.thumbTo] > 0.42) {
     return {
       verdict: 'coach',
-      feedback: 'Fix: touch your thumb tip and index fingertip together',
+      feedback: 'Touch your thumb and index fingertip together.',
       perFinger,
       classification,
     };
@@ -221,7 +221,7 @@ export function gradeAttempt(
   if (letter.motion) {
     return {
       verdict: 'self-check',
-      feedback: `${letter.letter} is a movement letter - trace the Ghost Hand path, then tap "Looks right"`,
+      feedback: 'Follow the movement of the guide hand.',
       perFinger,
       classification,
     };
@@ -235,7 +235,7 @@ export function gradeAttempt(
   if (isTopMatch && classification.margin >= abstainMargin && targetDist <= maxPassDistance) {
     return {
       verdict: 'pass',
-      feedback: `Matched ${letter.letter}!`,
+      feedback: 'Hold that shape.',
       perFinger,
       classification,
     };
@@ -246,7 +246,7 @@ export function gradeAttempt(
     if (classification.margin < abstainMargin) {
       return {
         verdict: 'self-check',
-        feedback: `Too close to call between ${letter.letter} and ${classification.label === letter.letter ? (classification.runnerUp ?? '?') : classification.label} - compare with the Ghost Hand, then tap "Looks right"`,
+        feedback: 'Tracking is uncertain. Compare with the guide hand.',
         perFinger,
         classification,
       };
@@ -261,7 +261,7 @@ export function gradeAttempt(
   const fingerNames = ['thumb', 'index finger', 'middle finger', 'ring finger', 'pinky'];
   return {
     verdict: 'coach',
-    feedback: `Adjust your ${fingerNames[weakestIdx]} to match the glowing Ghost Hand`,
+    feedback: `Adjust your ${fingerNames[weakestIdx]}.`,
     perFinger,
     classification,
   };

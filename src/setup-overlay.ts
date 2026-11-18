@@ -1,269 +1,223 @@
-/**
- * Pre-XR 2D HTML bar & expandable drawer for Mirrorless:
- * - Personalize Your Name & Personal Word List before entering XR (checks C2, C3)
- * - Starter presets (Caregiver & Meds, Family & Names, Double Letters)
- * - Dominant hand & audio toggle
- * - Shareable word-list link generator
- * - Per-letter tracker reliability & mastery matrix (check D8)
- * - Scope, honesty, medical disclaimer & Deaf-led resources (checks C10, D2, D3, D10, D12)
- *
- * Designed as a compact top bar with a collapsible drawer so the central 3D
- * viewport and spatial panels remain completely unobstructed. Automatically
- * hides during immersive XR sessions.
- */
-
 import { VisibilityState, type World } from '@iwsdk/core';
-import { ASL_LETTERS } from './asl-letters.js';
-import {
-  cleanWord,
-  getLetterReliability,
-  loadProfile,
-  saveProfile,
-  STARTER_PRESETS,
-} from './storage.js';
+import { cleanWord, loadProfile, saveProfile, STARTER_PRESETS } from './storage.js';
 import { isRecorderUrl } from './trainer.js';
+import './setup-overlay.css';
+
+const HELP_URL = 'https://github.com/Rebell-Leader/mirrorless#practice';
 
 export function mountSetupOverlay(world: World): void {
-  if (isRecorderUrl()) return;
+  if (isRecorderUrl() || new URLSearchParams(location.search).has('probe')) return;
 
-  const profile = loadProfile();
-
-  const root = document.createElement('div');
+  const root = document.createElement('main');
   root.id = 'mirrorless-2d-overlay';
-  root.style.cssText = [
-    'position:fixed',
-    'top:8px',
-    'left:8px',
-    'right:8px',
-    'z-index:20',
-    'font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif',
-    'color:#f8fafc',
-    'pointer-events:none',
-  ].join(';');
-
+  root.className = 'ml-page';
   root.innerHTML = `
-    <div id="ml-topbar" style="
-      pointer-events:auto;
-      display:flex;
-      flex-wrap:wrap;
-      align-items:center;
-      justify-content:space-between;
-      gap:8px;
-      padding:8px 14px;
-      background:rgba(15,23,42,0.88);
-      border:1px solid rgba(62,230,193,0.35);
-      border-radius:10px;
-      backdrop-filter:blur(8px);
-      font-size:13px;
-    ">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <strong style="color:#3ee6c1;letter-spacing:0.8px;">MIRRORLESS</strong>
-        <span style="color:#cbd5e1;">ASL Fingerspelling Practice (Manual Alphabet Only - Not ASL / Not a Translator)</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:4px;color:#e2e8f0;">
-          Name:
-          <input id="ml-name-input" type="text" maxlength="12" value="${profile.userName}" style="
-            width:78px;padding:3px 6px;border-radius:5px;border:1px solid #475569;
-            background:#1e293b;color:#f8fafc;font-weight:700;text-transform:uppercase;font-size:12px;
-          " />
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;color:#e2e8f0;">
-          Words:
-          <input id="ml-words-input" type="text" value="${profile.personalWords.join(', ')}" style="
-            width:175px;padding:3px 6px;border-radius:5px;border:1px solid #475569;
-            background:#1e293b;color:#f8fafc;text-transform:uppercase;font-size:12px;
-          " />
-        </label>
-        <button id="ml-save-btn" type="button" style="
-          padding:4px 9px;border-radius:6px;border:none;background:#0d9488;color:#fff;
-          font-weight:600;font-size:12px;cursor:pointer;
-        ">Apply</button>
-        <button id="ml-hand-btn" type="button" style="
-          padding:4px 9px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;
-          font-size:12px;cursor:pointer;
-        ">Hand: ${profile.dominantHand}</button>
-        <button id="ml-drawer-btn" type="button" style="
-          padding:4px 9px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#93c5fd;
-          font-size:12px;cursor:pointer;
-        ">Scope, Reliability & Presets</button>
-        <button id="ml-enter-xr-btn" type="button" style="
-          padding:5px 12px;border-radius:6px;border:none;background:#10b981;color:#052e16;
-          font-weight:700;font-size:12px;cursor:pointer;
-        ">Enter XR</button>
-      </div>
-    </div>
+    <div class="ml-shell">
+      <header class="ml-header">
+        <div class="ml-brand">
+          <img src="${import.meta.env.BASE_URL}mirrorless.svg" width="40" height="40" alt="" />
+          Mirrorless
+        </div>
+        <a href="${HELP_URL}" target="_blank" rel="noopener">How to use</a>
+      </header>
 
-    <div id="ml-drawer" style="
-      pointer-events:auto;
-      display:none;
-      margin-top:6px;
-      padding:14px 16px;
-      max-width:680px;
-      max-height:76vh;
-      overflow-y:auto;
-      background:rgba(15,23,42,0.95);
-      border:1px solid rgba(62,230,193,0.4);
-      border-radius:10px;
-      font-size:13px;
-      line-height:1.45;
-    ">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <strong style="color:#3ee6c1;font-size:14px;">Starter Word Packs & Shareable Link</strong>
-        <button id="ml-close-drawer" type="button" style="
-          background:transparent;border:1px solid #475569;color:#cbd5e1;border-radius:5px;
-          padding:2px 8px;cursor:pointer;font-size:12px;
-        ">Close</button>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-        <button data-preset="caregiver" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #0d9488;background:#134e4a;color:#ccfbf1;cursor:pointer;font-size:12px;">
-          Caregiver & Meds (MAYA, HANNAH, INSULIN, IBUPROFEN)
-        </button>
-        <button data-preset="family" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #0d9488;background:#134e4a;color:#ccfbf1;cursor:pointer;font-size:12px;">
-          Family & Names (ALEX, EMMA, NOAH, PARK)
-        </button>
-        <button data-preset="doubles" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #0d9488;background:#134e4a;color:#ccfbf1;cursor:pointer;font-size:12px;">
-          Double Letters (ANNA, BOOK, COFFEE, PIZZA)
-        </button>
-        <button id="ml-share-btn" type="button" style="padding:4px 8px;border-radius:5px;border:1px solid #6366f1;background:#1e1b4b;color:#e0e7ff;cursor:pointer;font-size:12px;">
-          Copy Shareable Word-List URL
-        </button>
-      </div>
+      <section class="ml-card" aria-label="Fingerspelling practice">
+        <div id="ml-intro">
+          <h1 id="ml-title">Practice a name.<br />See it from across the table.</h1>
+          <p class="ml-description">ASL fingerspelling practice for Meta Quest.</p>
+          <div class="ml-actions">
+            <button id="ml-enter-xr-btn" class="ml-primary" type="button">Start practice</button>
+            <button id="ml-drawer-btn" type="button" aria-expanded="false" aria-controls="ml-drawer">
+              Personalize
+            </button>
+          </div>
+          <p id="ml-entry-status" class="ml-message" role="status" hidden></p>
+          <div class="ml-summary">
+            <div>Practice name <strong id="ml-practice-name"></strong></div>
+            <div>Signing hand <strong id="ml-signing-hand"></strong></div>
+          </div>
+        </div>
 
-      <div style="margin-bottom:10px;padding:8px 10px;background:#1e293b;border-radius:8px;border-left:3px solid #f59e0b;">
-        <strong>Honest Scope & Safety Notice:</strong>
-        <ul style="margin:4px 0 0 18px;padding:0;color:#cbd5e1;">
-          <li><strong>Manual alphabet practice only:</strong> Does not teach ASL grammar, vocabulary signs, facial expressions, or mouthing.</li>
-          <li><strong>Not for medical communication or interpreting:</strong> Never use this app in place of a certified Deaf/ASL interpreter or written teach-back in healthcare.</li>
-          <li><strong>Authorship & Review:</strong> Built by a hearing developer; letter descriptions checked against published references and pending paid Deaf ASL signer sign-off. Reading-mode hand is explicitly labelled <em>synthetic</em>.</li>
-          <li><strong>Privacy:</strong> All hand-joint math runs locally on your device. No camera video, no cloud, no LLM. (Quest Browser shows a standard WebXR hand-tracking & spatial permission prompt.)</li>
-        </ul>
-      </div>
+        <form id="ml-drawer" class="ml-settings" aria-labelledby="ml-settings-title" hidden>
+          <h2 id="ml-settings-title">Personalize</h2>
+          <div class="ml-fields">
+            <div class="ml-field-group">
+              <label for="ml-name-input">Practice name</label>
+              <input id="ml-name-input" type="text" maxlength="12" autocomplete="off" spellcheck="false" />
+              <label for="ml-words-input">Extra words</label>
+              <input id="ml-words-input" type="text" placeholder="LILY, BOOK, ANNA" autocomplete="off" spellcheck="false" aria-describedby="ml-words-hint" />
+              <p id="ml-words-hint" class="ml-hint">Up to five, separated by commas.</p>
+            </div>
+            <div class="ml-field-group">
+              <fieldset>
+                <legend>Signing hand</legend>
+                <div class="ml-segment">
+                  <label><input name="ml-hand" type="radio" value="left" /><span>Left</span></label>
+                  <label><input name="ml-hand" type="radio" value="right" /><span>Right</span></label>
+                </div>
+              </fieldset>
+              <label class="ml-check"><input id="ml-sound" type="checkbox" /> Play feedback sounds</label>
+              <label for="ml-preset">Word list</label>
+              <select id="ml-preset">
+                <option value="">Choose a starter list</option>
+                ${Object.entries(STARTER_PRESETS).map(([key, preset]) => `<option value="${key}">${preset.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="ml-actions">
+            <button class="ml-primary" type="submit">Done</button>
+            <button id="ml-share-btn" type="button">Copy practice link</button>
+          </div>
+          <p id="ml-share-status" class="ml-message" role="status" hidden></p>
+        </form>
+      </section>
 
-      <div style="margin-bottom:10px;">
-        <strong style="color:#3ee6c1;">Per-Letter Quest Tracker Reliability & Mastery (Honest Abstention):</strong>
-        <div id="ml-letter-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:5px;margin-top:6px;"></div>
-      </div>
-
-      <div style="padding-top:6px;border-top:1px solid #334155;color:#cbd5e1;">
-        <strong>Deaf-Led ASL Learning Resources (Learn Real Signs First):</strong>
-        <a href="https://deafchildren.org/parents-and-families/asl-signon/" target="_blank" rel="noopener" style="color:#38bdf8;margin-left:6px;">ASDC SignOn (Deaf Mentors)</a> |
-        <a href="https://www.lifeprint.com/" target="_blank" rel="noopener" style="color:#38bdf8;margin-left:6px;">Lifeprint (Dr. Bill Vicars)</a> |
-        <a href="https://www.nad.org/" target="_blank" rel="noopener" style="color:#38bdf8;margin-left:6px;">National Association of the Deaf (NAD)</a> |
-        <a href="?recorder=1" style="color:#94a3b8;margin-left:6px;">Dev Dataset Recorder</a>
-      </div>
+      <footer class="ml-footer">
+        <span>Progress stays in this browser.</span>
+        <a href="https://deafchildren.org/2021/05/asdc-fingerspelling-app/" target="_blank" rel="noopener">More fingerspelling practice</a>
+      </footer>
     </div>
   `;
+  document.body.append(root);
 
-  document.body.appendChild(root);
+  const intro = root.querySelector<HTMLElement>('#ml-intro')!;
+  const settings = root.querySelector<HTMLFormElement>('#ml-drawer')!;
+  const nameInput = root.querySelector<HTMLInputElement>('#ml-name-input')!;
+  const wordsInput = root.querySelector<HTMLInputElement>('#ml-words-input')!;
+  const leftInput = root.querySelector<HTMLInputElement>('input[value="left"]')!;
+  const rightInput = root.querySelector<HTMLInputElement>('input[value="right"]')!;
+  const soundInput = root.querySelector<HTMLInputElement>('#ml-sound')!;
+  const presetInput = root.querySelector<HTMLSelectElement>('#ml-preset')!;
+  const personalize = root.querySelector<HTMLButtonElement>('#ml-drawer-btn')!;
+  const start = root.querySelector<HTMLButtonElement>('#ml-enter-xr-btn')!;
+  const share = root.querySelector<HTMLButtonElement>('#ml-share-btn')!;
+  const practiceName = root.querySelector<HTMLElement>('#ml-practice-name')!;
+  const signingHand = root.querySelector<HTMLElement>('#ml-signing-hand')!;
+  const entryStatus = root.querySelector<HTMLElement>('#ml-entry-status')!;
+  const shareStatus = root.querySelector<HTMLElement>('#ml-share-status')!;
 
-  const nameInput = root.querySelector('#ml-name-input') as HTMLInputElement;
-  const wordsInput = root.querySelector('#ml-words-input') as HTMLInputElement;
-  const saveBtn = root.querySelector('#ml-save-btn') as HTMLButtonElement;
-  const handBtn = root.querySelector('#ml-hand-btn') as HTMLButtonElement;
-  const drawerBtn = root.querySelector('#ml-drawer-btn') as HTMLButtonElement;
-  const closeDrawerBtn = root.querySelector('#ml-close-drawer') as HTMLButtonElement;
-  const enterXrBtn = root.querySelector('#ml-enter-xr-btn') as HTMLButtonElement;
-  const shareBtn = root.querySelector('#ml-share-btn') as HTMLButtonElement;
-  const drawer = root.querySelector('#ml-drawer') as HTMLDivElement;
-  const grid = root.querySelector('#ml-letter-grid') as HTMLDivElement;
+  let resumed = false;
+  let launchTimeout: number | undefined;
 
-  const renderGrid = () => {
-    const p = loadProfile();
-    grid.innerHTML = ASL_LETTERS.map((l) => {
-      const rel = getLetterReliability(l.letter);
-      const stat = p.letters[l.letter] ?? { attempts: 0, passes: 0, selfChecks: 0 };
-      const done = stat.passes + stat.selfChecks;
-      const badge =
-        rel === 'auto-high'
-          ? 'Auto (High)'
-          : rel === 'auto-medium'
-            ? 'Auto (Med)'
-            : 'Self-Check';
-      const borderCol =
-        rel === 'auto-high' ? '#10b981' : rel === 'auto-medium' ? '#38bdf8' : '#818cf8';
-      return `<div style="padding:4px 6px;border-radius:6px;background:#0f172a;border:1px solid ${borderCol};font-size:11px;">
-        <div style="display:flex;justify-content:space-between;font-weight:700;">
-          <span>${l.letter}</span>
-          <span style="color:#94a3b8;">${done > 0 ? `OK x${done}` : '-'}</span>
-        </div>
-        <div style="color:${borderCol};font-size:10px;">${badge}</div>
-      </div>`;
-    }).join('');
-  };
-  renderGrid();
-
-  const applyChanges = () => {
-    const p = loadProfile();
-    p.userName = cleanWord(nameInput.value, 'MAYA');
-    const parsedWords = wordsInput.value
-      .split(/[^A-Za-z]+/u)
-      .map((w) => cleanWord(w, ''))
-      .filter((w) => w.length >= 2)
-      .slice(0, 5);
-    if (parsedWords.length > 0) p.personalWords = parsedWords;
-    nameInput.value = p.userName;
-    wordsInput.value = p.personalWords.join(', ');
-    saveProfile(p);
-    window.dispatchEvent(new CustomEvent('mirrorless:profile-updated'));
-    renderGrid();
-  };
-
-  saveBtn.addEventListener('click', applyChanges);
-  nameInput.addEventListener('change', applyChanges);
-  wordsInput.addEventListener('change', applyChanges);
-
-  handBtn.addEventListener('click', () => {
-    const p = loadProfile();
-    p.dominantHand = p.dominantHand === 'right' ? 'left' : 'right';
-    handBtn.textContent = `Hand: ${p.dominantHand}`;
-    saveProfile(p);
-    window.dispatchEvent(new CustomEvent('mirrorless:profile-updated'));
-  });
-
-  drawerBtn.addEventListener('click', () => {
-    const open = drawer.style.display === 'block';
-    drawer.style.display = open ? 'none' : 'block';
-    if (!open) renderGrid();
-  });
-
-  closeDrawerBtn.addEventListener('click', () => {
-    drawer.style.display = 'none';
-  });
-
-  for (const btn of Array.from(root.querySelectorAll('[data-preset]'))) {
-    btn.addEventListener('click', () => {
-      const key = (btn as HTMLElement).getAttribute('data-preset') ?? 'caregiver';
-      const preset = STARTER_PRESETS[key];
-      if (!preset) return;
-      nameInput.value = preset.name;
-      wordsInput.value = preset.words.join(', ');
-      applyChanges();
-    });
+  function showMessage(element: HTMLElement, message: string): void {
+    element.textContent = message;
+    element.hidden = !message;
   }
 
-  shareBtn.addEventListener('click', () => {
-    applyChanges();
-    const p = loadProfile();
-    const url = new URL(window.location.href);
-    url.searchParams.set('name', p.userName);
-    url.searchParams.set('wordlist', p.personalWords.join(','));
-    url.searchParams.set('hand', p.dominantHand);
-    void navigator.clipboard?.writeText(url.toString());
-    shareBtn.textContent = 'Copied Shareable Link!';
-    setTimeout(() => {
-      shareBtn.textContent = 'Copy Shareable Word-List URL';
-    }, 2000);
+  function syncProfile(profile = loadProfile()): void {
+    nameInput.value = practiceName.textContent = profile.userName;
+    wordsInput.value = profile.personalWords.join(', ');
+    leftInput.checked = profile.dominantHand === 'left';
+    rightInput.checked = !leftInput.checked;
+    signingHand.textContent = leftInput.checked ? 'Left' : 'Right';
+    soundInput.checked = profile.soundEnabled;
+  }
+
+  function saveSettings() {
+    const profile = loadProfile();
+    profile.userName = cleanWord(nameInput.value, profile.userName);
+    profile.personalWords = [...new Set(wordsInput.value.split(/[^A-Za-z]+/u)
+      .map((word) => cleanWord(word, ''))
+      .filter(Boolean))].slice(0, 5);
+    profile.dominantHand = leftInput.checked ? 'left' : 'right';
+    profile.soundEnabled = soundInput.checked;
+    saveProfile(profile);
+
+    // A shared link seeds the local profile. Later edits use the saved values.
+    const url = new URL(location.href);
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    let changed = false;
+    let fragmentChanged = false;
+    for (const key of ['name', 'wordlist', 'hand']) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+      if (fragment.has(key)) {
+        fragment.delete(key);
+        fragmentChanged = true;
+      }
+    }
+    if (fragmentChanged) url.hash = fragment.toString();
+    if (changed || fragmentChanged) history.replaceState(history.state, '', url);
+    window.dispatchEvent(new CustomEvent('mirrorless:profile-updated'));
+    syncProfile(profile);
+    return profile;
+  }
+
+  function setSettingsOpen(open: boolean): void {
+    intro.hidden = open;
+    settings.hidden = !open;
+    personalize.setAttribute('aria-expanded', String(open));
+    showMessage(shareStatus, '');
+    (open ? nameInput : personalize).focus();
+  }
+
+  personalize.addEventListener('click', () => {
+    syncProfile();
+    setSettingsOpen(true);
+  });
+  settings.addEventListener('submit', (event) => {
+    event.preventDefault();
+    saveSettings();
+    setSettingsOpen(false);
+  });
+  settings.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') setSettingsOpen(false);
+  });
+  presetInput.addEventListener('change', () => {
+    const preset = STARTER_PRESETS[presetInput.value];
+    if (!preset) return;
+    nameInput.value = preset.name;
+    wordsInput.value = preset.words.join(', ');
+    presetInput.value = '';
+  });
+  share.addEventListener('click', async () => {
+    const profile = saveSettings();
+    const url = new URL(location.pathname, location.origin);
+    url.hash = new URLSearchParams({
+      name: profile.userName,
+      wordlist: profile.personalWords.join(','),
+      hand: profile.dominantHand,
+    }).toString();
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      showMessage(shareStatus, 'Link copied with your name and words.');
+    } catch {
+      showMessage(shareStatus, 'Could not copy the link.');
+    }
   });
 
-  enterXrBtn.addEventListener('click', () => {
-    applyChanges();
+  const showUnsupported = () => {
+    start.disabled = true;
+    showMessage(entryStatus, 'Open this page in Quest Browser to practice.');
+  };
+  if (!navigator.xr) showUnsupported();
+  else void navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+    if (!supported && !resumed) showUnsupported();
+  }).catch(() => { /* The start button still lets the browser request a session. */ });
+
+  start.addEventListener('click', () => {
+    saveSettings();
+    start.disabled = true;
+    showMessage(entryStatus, 'Opening practice…');
+    launchTimeout = window.setTimeout(() => {
+      start.disabled = false;
+      showMessage(entryStatus, 'Could not start. Check hand tracking and try again.');
+    }, 12000);
     world.launchXR();
   });
 
   world.visibilityState.subscribe((state) => {
-    const is2D = state === VisibilityState.NonImmersive;
-    root.style.display = is2D ? 'block' : 'none';
-    if (is2D) renderGrid();
+    root.hidden = state !== VisibilityState.NonImmersive;
+    if (root.hidden) {
+      resumed = true;
+      window.clearTimeout(launchTimeout);
+      start.disabled = false;
+      start.textContent = 'Resume practice';
+      showMessage(entryStatus, '');
+    } else {
+      syncProfile();
+    }
   });
 }
